@@ -7,6 +7,8 @@
 
 alias ls='ls --color=auto'
 alias grep='rg --color=auto'
+alias v='nvim'
+alias gg='lazygit'
 alias cd='z'
 # PS1='[\u@\h \W]\$ '
 

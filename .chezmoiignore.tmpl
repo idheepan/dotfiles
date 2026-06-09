@@ -6,4 +6,5 @@
 # Ignore Mac LaunchAgents on Linux/Windows
 {{ if ne .chezmoi.os "darwin" }}
 Library/LaunchAgents/com.local.KeyRemapping.plist
+.zshrc
 {{ end }}

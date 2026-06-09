@@ -1,0 +1,5 @@
+export PATH="$HOME/nvim-macos-arm64/bin:$PATH"
+
+alias v="nvim"
+alias gg="lazygit"
+eval "$(starship init zsh)"
