@@ -12,8 +12,12 @@ config.initial_cols = 120
 config.initial_rows = 28
 
 -- font size and color scheme.
-config.font_size = 10
-config.font = wezterm.font_with_fallback({ "Iosevka Nerd Font", "Noto Color Emoji" })
+config.font = wezterm.font_with_fallback({ "IosevkaTerm Nerd Font", "Noto Color Emoji" })
+{{ if eq .chezmoi.os "darwin" -}}
+config.font_size = 15.0       -- Massive font for the main Mac terminal window
+{{ else -}}
+config.font_size = 10.0       -- Default size for Linux/Windows
+{{ end -}}
 config.color_scheme = "Catppuccin Mocha"
 -- Catppuccin Mocha Colors
 local catppuccin_mocha = {
@@ -60,9 +64,12 @@ smart_splits.apply_to_config(config, {
 
 -- tab bar style
 config.window_frame = {
-	font_size = 10,
+    {{ if eq .chezmoi.os "darwin" -}}
+    font_size = 13.0,          -- Tab bar font size for Mac
+    {{ else -}}
+    font_size = 9.0,           -- Tab bar font size for Linux/Windows
+    {{ end -}}
 }
-
 -- This function returns the suggested title for a tab.
 -- It prefers the title that was set via `tab:set_title()`
 -- or `wezterm cli set-tab-title`, but falls back to the
