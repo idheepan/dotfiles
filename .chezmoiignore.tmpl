@@ -1,0 +1,9 @@
+{{ if eq .chezmoi.os "darwin" }}
+.bash_profile
+.bashrc
+{{ end }}
+
+# Ignore Mac LaunchAgents on Linux/Windows
+{{ if ne .chezmoi.os "darwin" }}
+Library/LaunchAgents/com.local.KeyRemapping.plist
+{{ end }}
