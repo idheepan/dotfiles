@@ -1,0 +1,7 @@
+[[keymaps]]
+command = "None"
+key_sequence = "l"
+
+[[actions]]
+action = "ToggleLiked"
+key_sequence = "l"

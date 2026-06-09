@@ -1,0 +1,41 @@
+window-rule {
+    geometry-corner-radius 4
+    clip-to-geometry true
+}
+
+window-rule {
+    match app-id="small-float"
+    
+    // Make it pop up as a floating window
+    open-floating true
+    opacity 0.9
+    
+    default-floating-position x=660 y=400 relative-to="top-left"
+    default-column-width { fixed 600; }
+    default-window-height { fixed 400; }
+}
+
+
+window-rule {
+    match app-id="med-float"
+    
+    // Make it pop up as a floating window
+    open-floating true
+    opacity 0.9
+    
+    default-floating-position x=510 y=320 relative-to="top-left"
+    default-column-width { fixed 900; }
+    default-window-height { fixed 600; }
+}
+
+window-rule {
+    match app-id="large-float"
+    
+    // Make it pop up as a floating window
+    open-floating true
+    opacity 0.9
+    
+    default-floating-position x=360 y=140 relative-to="top-left"
+    default-column-width { fixed 1200; }
+    default-window-height { fixed 800; }
+}

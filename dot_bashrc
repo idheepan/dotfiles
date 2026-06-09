@@ -1,0 +1,34 @@
+#
+# ~/.bashrc
+#
+
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
+
+alias ls='ls --color=auto'
+alias grep='rg --color=auto'
+alias cd='z'
+# PS1='[\u@\h \W]\$ '
+
+# Change this if we move to different terminal 
+# emulator
+export TERM=xterm-256color
+export COLORTERM=truecolor
+export EDITOR=nvim
+export VISUAL=nvim
+export PATH="$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/bin:$HOME/.local/bin/:/opt/cuda/bin/:$PATH"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# For android studio and tauri
+export JAVA_HOME=/opt/android-studio/jbr
+export ANDROID_HOME="$HOME/Android/Sdk"
+export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
+
+
+eval "$(fzf --bash)"
+eval "$(starship init bash)"
+# Keep this at the end of .bashrc
+eval "$(zoxide init bash)"

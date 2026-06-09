@@ -1,0 +1,16 @@
+local unix_domains = {
+{{- if and (index . "wezterm") (index .wezterm "unix_domains") }}
+	{{- range .wezterm.unix_domains }}
+	{
+		name = {{ .name | quote }},
+		proxy_command = {
+			{{- range .proxy_command }}
+			{{ . | quote }},
+			{{- end }}
+		},
+	},
+	{{- end }}
+{{- end }}
+}
+
+return unix_domains

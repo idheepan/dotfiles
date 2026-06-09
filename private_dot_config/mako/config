@@ -1,0 +1,9 @@
+# Styling
+font=Inter Regular 12
+background-color=#1d2021
+
+# Timeout in milliseconds (5000ms = 5 seconds)
+default-timeout=5000
+[urgency=critical]
+default-timeout=0
+border-color=#fb4934

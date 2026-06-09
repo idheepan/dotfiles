@@ -1,0 +1,19 @@
+# Profile for when you are just using your laptop
+profile "standalone_1" {
+    output "eDP-1" enable mode 1920x1200 position 0,0
+}
+
+# Profile for work triple-monitor setup
+# This layout puts the HP monitors on the sides and the laptop in the middle
+profile "work_setup" {
+    output "eDP-1" disable
+    output "HP Inc. HP E243 CNC011294T"  enable position 0,0
+    output "HP Inc. HP E24 G5 VNG349027R"  enable position 1920,0
+}
+
+profile "home_setup" {
+   output "eDP-1" disable
+   output "Acer Technologies XB253Q TH5AA0038521" enable position 0,0
+   output "PNP(BNQ) BenQ GW2480 ET3CK01242SL0" enable position 1920,0
+}
+
