@@ -8,15 +8,18 @@ local config = wezterm.config_builder()
 -- This is where you actually apply your config choices.
 
 -- For example, changing the initial geometry for new windows:
-config.initial_cols = 120
-config.initial_rows = 28
+config.initial_cols = 150
+config.initial_rows = 70
 
 -- font size and color scheme.
 config.font = wezterm.font_with_fallback({ "IosevkaTerm Nerd Font", "Noto Color Emoji" })
 {{ if eq .chezmoi.os "darwin" -}}
 config.font_size = 15.0       -- Massive font for the main Mac terminal window
+config.window_frame = {font_size = 13.0}
 {{ else -}}
+config.window_decorations = "NONE"
 config.font_size = 10.0       -- Default size for Linux/Windows
+config.window_frame = {font_size = 9.0}
 {{ end -}}
 config.color_scheme = "Catppuccin Mocha"
 -- Catppuccin Mocha Colors
@@ -33,7 +36,6 @@ local catppuccin_mocha = {
 	sky = "#89dceb",
 	lavender = "#b4befe",
 }
-config.window_decorations = "NONE"
 config.window_close_confirmation = "NeverPrompt"
 config.hide_tab_bar_if_only_one_tab = true
 config.adjust_window_size_when_changing_font_size = false
@@ -63,13 +65,6 @@ smart_splits.apply_to_config(config, {
 })
 
 -- tab bar style
-config.window_frame = {
-    {{ if eq .chezmoi.os "darwin" -}}
-    font_size = 13.0,          -- Tab bar font size for Mac
-    {{ else -}}
-    font_size = 9.0,           -- Tab bar font size for Linux/Windows
-    {{ end -}}
-}
 -- This function returns the suggested title for a tab.
 -- It prefers the title that was set via `tab:set_title()`
 -- or `wezterm cli set-tab-title`, but falls back to the
