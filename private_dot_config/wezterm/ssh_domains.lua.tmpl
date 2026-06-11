@@ -1,15 +1,23 @@
 local ssh_domains = {
 {{- if and (index . "wezterm") (index .wezterm "ssh_domains") }}
-	{{- range .wezterm.ssh_domains }}
-	{
-		name = {{ .name | quote }},
-		remote_address = {{ .remote_address | quote }},
-		username = {{ .username | quote }},
-    {{- if index . "remote_wezterm_path" }}
-		remote_wezterm_path = {{ .remote_wezterm_path | quote }},
-		{{- end }}
-	},
-	{{- end }}
+        {{- range .wezterm.ssh_domains }}
+        {
+                name = {{ .name | quote }},
+                remote_address = {{ .remote_address | quote }},
+                username = {{ .username | quote }},
+                multiplexing = {{.multiplexing | quote }},
+                {{- if index . "remote_wezterm_path" }}
+                remote_wezterm_path = {{ .remote_wezterm_path | quote }},
+                {{- end }}
+                {{- if index . "ssh_option" }}
+                ssh_option = {
+                        {{- range $key, $value := .ssh_option }}
+                        {{ $key }} = {{ $value | quote }},
+                        {{- end }}
+                },
+                {{- end }}
+        },
+        {{- end }}
 {{- end }}
 }
 
