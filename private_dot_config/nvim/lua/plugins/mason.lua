@@ -2,7 +2,6 @@ return {
   "mason-org/mason.nvim",
   opts = {
     ensure_installed = {
-      "black",
       "clang-format",
       "clangd",
       "cmakelang",
@@ -21,12 +20,9 @@ return {
       "shellcheck",
       "shfmt",
       "stylua",
-      "svelte-language-server",
-      "tailwindcss-language-server",
       "taplo",
       "tinymist",
       "typstyle",
-      "tinymist",
       "tree-sitter-cli",
       "typescript-language-server",
       "uv",

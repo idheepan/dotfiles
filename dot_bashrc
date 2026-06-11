@@ -25,9 +25,15 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 # For android studio and tauri
-export JAVA_HOME=/opt/android-studio/jbr
-export ANDROID_HOME="$HOME/Android/Sdk"
-export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
+if [ -d "/opt/android-studio" ] && [ -d "$HOME/Android/Sdk" ]; then
+    export JAVA_HOME=/opt/android-studio/jbr
+    export ANDROID_HOME="$HOME/Android/Sdk"
+    # Safely check for the NDK directory to avoid 'ls' errors on startup
+    if [ -d "$ANDROID_HOME/ndk" ]; then
+        # Use head -n 1 in case multiple NDK versions are installed
+        export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 "$ANDROID_HOME/ndk" | head -n 1)"
+    fi
+fi
 
 
 eval "$(fzf --bash)"
