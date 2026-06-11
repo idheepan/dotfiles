@@ -14,11 +14,12 @@ config.initial_rows = 70
 -- font size and color scheme.
 config.font = wezterm.font_with_fallback({ "IosevkaTerm Nerd Font", "Noto Color Emoji" })
 {{ if eq .chezmoi.os "darwin" -}}
-config.font_size = 15.0       -- Massive font for the main Mac terminal window
+config.font_size = 15.0
 config.window_frame = {font_size = 13.0}
+config.native_macos_fullscreen_mode=true
 {{ else -}}
 config.window_decorations = "NONE"
-config.font_size = 10.0       -- Default size for Linux/Windows
+config.font_size = 10.0
 config.window_frame = {font_size = 9.0}
 {{ end -}}
 config.color_scheme = "Catppuccin Mocha"
