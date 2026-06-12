@@ -1,5 +1,8 @@
 return {
   "mason-org/mason.nvim",
+  {{- if eq .chezmoi.osRelease.id "nixos" }}
+  enabled = false,
+  {{- else }}
   opts = {
     ensure_installed = {
       "clang-format",
@@ -37,4 +40,5 @@ return {
       },
     },
   },
+  {{- end}}
 }

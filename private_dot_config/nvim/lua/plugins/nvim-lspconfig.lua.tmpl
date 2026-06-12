@@ -2,31 +2,6 @@ return {
   "neovim/nvim-lspconfig",
   opts = {
     servers = {
-      svelte = {
-        settings = {
-          inlayHints = {
-            enumMemberValues = {
-              enabled = true,
-            },
-            functionLikeReturnTypes = {
-              enabled = true,
-            },
-            parameterNames = {
-              enabled = "literals",
-              suppressWhenArgumentMatchesName = true,
-            },
-            parameterTypes = {
-              enabled = true,
-            },
-            propertyDeclarationTypes = {
-              enabled = true,
-            },
-            variableTypes = {
-              enabled = true,
-            },
-          },
-        },
-      },
       rust_analyzer = {
         settings = {
           ["rust-analyzer"] = {
@@ -41,8 +16,12 @@ return {
       },
       -- Add tinymist configuration
       tinymist = {
+        {{- if eq .chezmoi.osRelease.id "nixos" }}
+        mason = false,
+        {{- else }}
         -- Use Mason-installed tinymist
         mason = true,
+        {{- end }}
         settings = {
           formatterMode = "typstyle", -- Use typstyle for formatting
           exportPdf = "onSave", -- Auto-export PDF on save (or "onType")
