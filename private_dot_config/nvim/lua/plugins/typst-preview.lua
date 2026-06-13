@@ -2,14 +2,19 @@ return {
   "chomosuke/typst-preview.nvim",
   lazy = false, -- or ft = 'typst'
   version = "1.*",
-  opts = {}, -- lazy.nvim will implicitly calls `setup {}`
+  opts = {
+    open_cmd = "open %s",
+    dependencies_bin = {
+      ["tinymist"] = vim.fn.exepath("tinymist"),
+      ["websocat"] = vim.fn.exepath("websocat"),
+    },
+    extra_args = { "--verbose" },
+  },
   keys = {
     {
       "<leader>cp",
       function()
-        -- The command is usually named after the filetype/plugin.
-        -- You may need to confirm the exact command, but :TypstPreview is a common convention.
-        vim.cmd.TypstPreview()
+        vim.cmd.TypstPreviewToggle()
       end,
       desc = "Typst Preview Toggle",
       ft = "typst", -- Only available in typst files
