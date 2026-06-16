@@ -1,8 +1,15 @@
 return {
-  {{- if eq .chezmoi.osRelease.id "nixos" }}
+  {{- $is_nixos := false -}}
+  {{- if hasKey .chezmoi.osRelease "id" -}}
+    {{- if eq .chezmoi.osRelease.id "nixos" -}}
+      {{- $is_nixos = true -}}
+    {{- end -}}
+  {{- end -}}
+
+{{- if $is_nixos }}
   { "mason-org/mason.nvim", enabled = false },
   { "mason-org/mason-lspconfig.nvim", enabled = false },
-  {{- else }}
+{{- else }}
   "mason-org/mason.nvim",
   opts = {
     ensure_installed = {

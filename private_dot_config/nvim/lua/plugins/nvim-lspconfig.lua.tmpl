@@ -1,3 +1,10 @@
+        {{- $is_nixos := false -}}
+{{- if hasKey .chezmoi.osRelease "id" -}}
+  {{- if eq .chezmoi.osRelease.id "nixos" -}}
+    {{- $is_nixos = true -}}
+  {{- end -}}
+{{- end -}}
+
 return {
   "neovim/nvim-lspconfig",
   opts = {
@@ -16,7 +23,7 @@ return {
       },
       -- Add tinymist configuration
       tinymist = {
-        {{- if eq .chezmoi.osRelease.id "nixos" }}
+        {{- if $is_nixos }}
         mason = false,
         {{- else }}
         -- Use Mason-installed tinymist

@@ -2,5 +2,7 @@ export PATH="$HOME/nvim-macos-arm64/bin:$PATH"
 
 alias v="nvim"
 alias gg="lazygit"
+# Set up fzf key bindings and fuzzy completion
+source <(fzf --zsh)
 eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
