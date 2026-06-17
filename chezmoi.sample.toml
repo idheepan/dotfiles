@@ -1,3 +1,7 @@
+# ~/.config/chezmoi/chezmoi.toml
+[data.llama]
+    endpoint_fim = "http://localhost:8012/infill"
+
 [data.wezterm]
     headless = false
     [[data.wezterm.ssh_domains]]
