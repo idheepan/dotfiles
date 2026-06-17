@@ -1,4 +1,4 @@
-        {{- $is_nixos := false -}}
+{{- $is_nixos := false -}}
 {{- if hasKey .chezmoi.osRelease "id" -}}
   {{- if eq .chezmoi.osRelease.id "nixos" -}}
     {{- $is_nixos = true -}}

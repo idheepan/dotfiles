@@ -1,0 +1,15 @@
+{{- $is_nixos := false -}}
+{{- if hasKey .chezmoi.osRelease "id" -}}
+  {{- if eq .chezmoi.osRelease.id "nixos" -}}
+    {{- $is_nixos = true -}}
+  {{- end -}}
+{{- end -}}
+return {
+  "iamcco/markdown-preview.nvim",
+{{- if $is_nixos }}
+  -- On NixOS the default prebuilt download is broken (it's not patchelf'd for
+  -- the Nix store), so build the Node server from source instead. Requires
+  -- `nodejs` in the system environment (see ~/.nixos/user-environment.nix).
+  build = "cd app && npm install",
+{{- end }}
+}
