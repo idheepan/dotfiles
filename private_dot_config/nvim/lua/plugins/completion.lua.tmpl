@@ -3,8 +3,8 @@ return {
 		"ggml-org/llama.vim",
 		init = function()
 			vim.g.llama_config = {
-				endpoint_fim = {{ if and (index . "llama") (index .llama "endpoint_fim") }}{{ .llama.endpoint_fim | quote }}{{ else }}"http://localhost:8012/infill"{{ end }},
-				auto_fim = true,
+        -- endpoint_fim = {{ if and (index . "llama") (index .llama "endpoint_fim") }}{{ .llama.endpoint_fim | quote }}{{ else }}"http://localhost:8012/infill"{{ end }},
+				auto_fim = false,
 				show_info = 0,
 				max_line_suffix = 8,
 
