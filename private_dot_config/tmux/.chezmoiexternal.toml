@@ -1,4 +1,5 @@
 ["plugins/catppuccin/tmux"]
-    type = "git-repo"
-    url = "https://github.com/catppuccin/tmux.git"
+    type = "archive"
+    url = "https://github.com/catppuccin/tmux/archive/refs/heads/main.tar.gz"
+    stripComponents = 1
     refreshPeriod = "168h"
