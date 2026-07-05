@@ -2,4 +2,4 @@ theme  = catppuccin-mocha.conf
 
 # Send Alt/Meta escapes for Option key presses (macOS only; ignored elsewhere)
 # so tmux's `M-h/j/k/l` pane-navigation bindings work.
-macos-option-as-alt = true
+macos-option-as-alt = left
