@@ -27,8 +27,6 @@ vim.g.clipboard = {
   },
 }
 
-vim.g.smart_splits_multiplexer_integration = "wezterm"
-
 -- For oil.nvim to work as primary handler
 vim.g.loaded_netrw = 1
 vim.g.loaded_netrwPlugin = 1
