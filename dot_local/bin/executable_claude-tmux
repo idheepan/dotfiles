@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# desc: Claude Code status in tmux tabs (adapted from wolfe-dotfiles, catppuccin-aware)
+#
+# claude-tmux init            install tmux hook and M-a binding (run from tmux.conf)
+# claude-tmux hook            Claude lifecycle hooks, JSON on stdin
+# claude-tmux statusline      Claude statusLine command, JSON on stdin
+# claude-tmux next <session>  jump to the next window waiting on you
+# claude-tmux seen <window>   clear the unread dot on a window
+#
+# Options written, each already rendered for the status bar:
+#   window @claude_icon  tab marker (colored, then restores the catppuccin tab fg)
+#   pane   @claude_ctx_val  context percent (also set on the window,
+#                           for a Claude in another split)
+#   global @claude_5h_val  5-hour rate limit used (percent)
+#   global @claude_7d_val  weekly rate limit used (percent)
+# modules/claude.conf wraps these in a catppuccin-style status module.
+#
+# Requires: jq, tmux, a Nerd Font.
+
+pane="$TMUX_PANE"
+
+# Restore the tab's normal foreground after a colored icon (catppuccin colors).
+restore='#[fg=#{?window_active,#{@thm_crust},#{@thm_fg}}]'
+
+# set_state <target> <working|needs|done|error|"">
+set_state() {
+    local icon
+    case "$2" in
+        needs) icon="#[fg=#{@thm_yellow}]? $restore" ;;
+        done)  icon="#[fg=#{@thm_green}]● $restore" ;;
+        error) icon="#[fg=#{@thm_red}]! $restore" ;;
+    esac
+    tmux set -w -t "$1" @claude_state "$2" \; set -w -t "$1" @claude_icon "$icon"
+    if [ "$2" = working ] && ! kill -0 "$(tmux show -wv -t "$1" @claude_spin 2>/dev/null)" 2>/dev/null; then
+        spin "$1" >/dev/null 2>&1 </dev/null &
+        tmux set -w -t "$1" @claude_spin $!
+    fi
+}
+
+spin() {
+    # Braille frames are all one cell wide, so the tab never changes width.
+    local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0
+    while [ "$(tmux show -wv -t "$1" @claude_state 2>/dev/null)" = working ]; do
+        tmux set -w -t "$1" @claude_icon "#[fg=#{@thm_blue}]${frames[i++ % ${#frames[@]}]} $restore"
+        sleep 0.2
+    done
+}
+
+hook() {
+    local event type
+    read -r event type < <(jq -r '"\(.hook_event_name) \(.notification_type // "")"')
+    case "$event" in
+        SessionStart)
+            tmux set -p -t "$pane" @claude 1 \; set -w -t "$pane" monitor-activity off
+            set_state "$pane" ""
+            ;;
+        UserPromptSubmit | PostToolUse)
+            set_state "$pane" working
+            ;;
+        Notification)
+            if [ "$type" = permission_prompt ]; then
+                set_state "$pane" needs
+            fi
+            ;;
+        Stop)
+            # No unread dot if you are already looking at it.
+            if [ "$(tmux display -p -t "$pane" '#{&&:#{window_active},#{session_attached}}')" = 1 ]; then
+                set_state "$pane" ""
+            else
+                set_state "$pane" done
+            fi
+            ;;
+        StopFailure)
+            set_state "$pane" error
+            ;;
+        SessionEnd)
+            set_state "$pane" ""
+            for o in @claude_ctx_val; do
+                tmux set -pu -t "$pane" "$o" \; set -wu -t "$pane" "$o"
+            done
+            tmux set -pu -t "$pane" @claude
+            tmux list-panes -t "$pane" -F '#{@claude}' | grep -q 1 || tmux set -wu -t "$pane" monitor-activity
+            ;;
+    esac
+}
+
+statusline() {
+    local ctx five week
+    read -r ctx five week < <(jq -r '[((.context_window.used_percentage // 0) | round), (.rate_limits.five_hour.used_percentage | if . == null then "-" else round end), (.rate_limits.seven_day.used_percentage | if . == null then "-" else round end)] | @tsv')
+
+    # Set on the pane and on the window (for a Claude in another split).
+    local scope
+    for scope in -p -w; do
+        tmux set "$scope" -t "$pane" @claude_ctx_val "${ctx}%"
+    done
+
+    if [ "$five" != - ]; then
+        tmux set -g @claude_5h_val "${five}%"
+    fi
+    if [ "$week" != - ]; then
+        tmux set -g @claude_7d_val "${week}%"
+    fi
+}
+
+next() {
+    local target
+    target=$(tmux list-windows -t "$1" -F '#{window_active} #{window_index} #{@claude_state}' |
+        awk '$1 == 1 { seen = 1; next }
+             $3 ~ /^(needs|done|error)$/ { if (seen && after == "") after = $2; if (first == "") first = $2 }
+             END { print (after != "" ? after : first) }')
+    if [ -n "$target" ]; then
+        tmux select-window -t "$1:$target"
+    fi
+}
+
+seen() {
+    if [ "$(tmux show -wv -t "$1" @claude_state 2>/dev/null)" = done ]; then
+        set_state "$1" ""
+    fi
+}
+
+init() {
+    tmux set-hook -g session-window-changed[50] "run-shell -b '$0 seen #{window_id}'"
+    tmux bind -n M-a run-shell "$0 next '#{session_id}'"
+}
+
+case "$1" in
+    init | next | seen) "$@" ;;
+    hook | statusline) [ -z "$pane" ] || "$1" ;;
+esac

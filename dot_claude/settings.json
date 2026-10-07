@@ -1,5 +1,10 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "~/.local/bin/claude-tmux statusline"
+  },
   "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -9,8 +14,14 @@
             "command": "bash ~/.claude/hooks/agents-md-loader.sh"
           }
         ]
-      }
-    ]
+      },
+      { "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }
+    ],
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
+    "Notification": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }]
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
