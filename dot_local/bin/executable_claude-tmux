@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # desc: Claude Code status in tmux tabs (adapted from wolfe-dotfiles, catppuccin-aware)
 #
-# claude-tmux init            install tmux hook and M-a binding (run from tmux.conf)
+# claude-tmux init            install tmux hook and M-f binding (run from tmux.conf)
 # claude-tmux hook            Claude lifecycle hooks, JSON on stdin
 # claude-tmux statusline      Claude statusLine command, JSON on stdin
 # claude-tmux next <session>  jump to the next window waiting on you
@@ -121,7 +121,7 @@ seen() {
 
 init() {
     tmux set-hook -g session-window-changed[50] "run-shell -b '$0 seen #{window_id}'"
-    tmux bind -n M-a run-shell "$0 next '#{session_id}'"
+    tmux bind -n M-f run-shell "$0 next '#{session_id}'"
 }
 
 case "$1" in
