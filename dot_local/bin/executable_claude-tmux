@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# desc: Claude Code status in tmux tabs (adapted from wolfe-dotfiles, catppuccin-aware)
+# desc: Claude Code status in tmux tabs (adapted from https://github.com/wolfecub/dotfiles, catppuccin-aware)
 #
 # claude-tmux init            install tmux hook and M-f binding (run from tmux.conf)
 # claude-tmux hook            Claude lifecycle hooks, JSON on stdin
@@ -85,8 +85,12 @@ hook() {
 }
 
 statusline() {
-    local ctx five week
-    read -r ctx five week < <(jq -r '[((.context_window.used_percentage // 0) | round), (.rate_limits.five_hour.used_percentage | if . == null then "-" else round end), (.rate_limits.seven_day.used_percentage | if . == null then "-" else round end)] | @tsv')
+    local ctx five week reset_epoch
+    read -r ctx five week reset_epoch < <(jq -r '[((.context_window.used_percentage // 0) | round),
+        (.rate_limits.five_hour.used_percentage | if . == null then "-" else round end),
+        (.rate_limits.seven_day.used_percentage | if . == null then "-" else round end),
+        (.rate_limits.five_hour.resets_at // "-")
+     ] | @tsv')
 
     # Set on the pane and on the window (for a Claude in another split).
     local scope
@@ -96,6 +100,17 @@ statusline() {
 
     if [ "$five" != - ]; then
         tmux set -g @claude_5h_val "${five}%"
+        if [ "$reset_epoch" != - ]; then
+            local reset_time
+            if date --version >/dev/null 2>&1; then
+                # GNU date (Linux)
+                reset_time=$(date -d "@$reset_epoch" +"%H:%M")
+            else
+                # BSD date (macOS)
+                reset_time=$(date -r "$reset_epoch" +"%H:%M")
+            fi
+            tmux set -g @claude_5h_reset "$reset_time"
+        fi
     fi
     if [ "$week" != - ]; then
         tmux set -g @claude_7d_val "${week}%"
