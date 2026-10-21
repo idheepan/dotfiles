@@ -132,15 +132,15 @@
   },
   "cpu": {
     "format": "󰻠 {usage}%",
-    "on-click": "wezterm  start --class \"large-float\" -- btop"
+    "on-click": "ghostty --class=com.dhpn.large-float -e btop"
   },
   "memory": {
     "format": "󰍛 {}%",
-    "on-click": "wezterm  start --class \"large-float\" -- btop"
+    "on-click": "ghostty --class=com.dhpn.large-float -e btop"
   },
   "disk": {
     "format": " {percentage_used}%",
-    "on-click": "wezterm  start --class \"small-float\" -- watch -n 10 --color duf"
+    "on-click": "ghostty --class=com.dhpn.small-float -e watch -n 10 --color duf"
   },
   "temperature": {
     // "thermal-zone": 2,
@@ -211,14 +211,14 @@
     "tooltip-format": "{ifname} via {gwaddr} ",
     "format-linked": "{ifname} (No IP) ",
     "format-disconnected": "Disconnected ⚠",
-    "on-click": "wezterm  start --class \"med-float\" -- impala"
+    "on-click": "ghostty --class=com.dhpn.med-float -e impala"
   },
   "bluetooth": {
     "format": " {status}",
     "format-on": "",
     "format-connected": "󰂱",
     "format-off": "󰂲",
-    "on-click": "wezterm  start --class \"med-float\" -- bluetui"
+    "on-click": "ghostty --class=com.dhpn.med-float -e bluetui"
   },
   "pulseaudio": {
     // "scroll-step": 1, // %, can be a float
@@ -241,7 +241,7 @@
         ""
       ]
     },
-    "on-click": "wezterm  start --class \"med-float\" -- wiremix --tab output"
+    "on-click": "ghostty --class=com.dhpn.med-float -e wiremix --tab output"
   },
   // "custom/media": {
   //     "format": "{icon} {text}",

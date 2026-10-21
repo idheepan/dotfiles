@@ -14,12 +14,12 @@ binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
-    Mod+Return hotkey-overlay-title="Open a Terminal: wezterm" { spawn "wezterm"; }
+    Mod+Return hotkey-overlay-title="Open a Terminal: ghostty" { spawn "ghostty"; }
     Mod+Space hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
-    Mod+E hotkey-overlay-title="Run an Application: Explorer" { spawn "wezterm" "-e" "yazi"; }
+    Mod+E hotkey-overlay-title="Run an Application: Explorer" { spawn "ghostty" "-e" "yazi"; }
     Mod+B hotkey-overlay-title="Run an Application: Browser" { spawn "chromium"; }
-    Mod+N hotkey-overlay-title="Run an Application: Notes" { spawn "wezterm" "start" "--" "nvim" "/home/dhpn/Documents/notes.md"; }
-    Mod+A hotkey-overlay-title="Calculator: qalc" { spawn "wezterm" "start" "--class" "small-float" "--" "qalc" ;}
+    Mod+N hotkey-overlay-title="Run an Application: Notes" { spawn "ghostty" "-e" "nvim" "/home/dhpn/Documents/notes.md"; }
+    Mod+A hotkey-overlay-title="Calculator: qalc" { spawn "ghostty" "--class=com.dhpn.small-float" "-e" "qalc"; }
     // Super+Alt+L hotkey-overlay-title="Lock the Screen: swaylock" { spawn "swaylock"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.

@@ -16,7 +16,7 @@ scope, so don't add branches or files for them.
   Nix store, so build them from source instead.
 - **NixOS VM on macOS (OrbStack)**: NixOS plus `headless = true` in
   `chezmoi.toml`. There's no GUI here. Host services are reachable at
-  `host.orb.internal`, and the Mac's WezTerm usually connects in over SSH.
+  `host.orb.internal`, and the Mac's Ghostty usually connects in over SSH.
 - **macOS**: `.chezmoi.os` is `"darwin"`. It uses zsh, LaunchAgents under
   `private_Library/`, and a GUI terminal.
 - **Arch Linux**: `.chezmoi.osRelease.id` is `"arch"`. The desktop is a niri
@@ -71,12 +71,10 @@ Machine-specific values go under `[data]` in
 `~/.config/chezmoi/chezmoi.toml`, never hardcoded. Current keys:
 
 - `headless` (top-level): read by `.chezmoiignore`.
-- `wezterm.headless`: required by `wezterm.lua.tmpl`.
-- `wezterm.ssh_domains`, `wezterm.unix_domains`: optional.
 - `llama.endpoint_fim`: optional, falls back to localhost.
 
 chezmoi errors on a missing key. When you add a key, read it defensively with
-`index` and a fallback (see `completion.lua.tmpl` and `ssh_domains.lua.tmpl`),
+`index` and a fallback (see `completion.lua.tmpl`),
 and document it in `chezmoi.sample.toml`.
 
 ## Workflow
