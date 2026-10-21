@@ -7,6 +7,12 @@ return {
       explorer = {
         enabled = false,
       },
+
+      lazygit = {
+        theme = {
+          inactiveBorderColor = { fg = "LineNr" },
+        },
+      },
     },
     keys = {
       { "<leader>/", LazyVim.pick("live_grep", { root = false }), desc = "Grep (cwd)" },

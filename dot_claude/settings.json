@@ -1,10 +1,16 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "~/.local/bin/claude-tmux statusline"
-  },
+  "model": "opus",
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -15,18 +21,86 @@
           }
         ]
       },
-      { "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
     ],
-    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
-    "Notification": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
-    "StopFailure": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "~/.local/bin/claude-tmux hook" }] }]
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/claude-tmux hook"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.local/bin/claude-tmux statusline"
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "lua-lsp@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "modelSettings": {
+    "claude-sonnet-5-5": {
+      "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
   },
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto"

@@ -1,0 +1,32 @@
+gui:
+  # Catppuccin mocha, matching what snacks.nvim generates from the colorscheme
+  # (~/.cache/nvim/lazygit-theme.yml), so lazygit looks the same in and out of
+  # Neovim. inactiveBorderColor follows the override in nvim's snacks.lua.
+  theme:
+    activeBorderColor:
+      - '#fab387'
+      - bold
+    inactiveBorderColor:
+      - '#45475a'
+    optionsTextColor:
+      - '#89b4fa'
+    selectedLineBgColor:
+      - '#45475a'
+    cherryPickedCommitBgColor:
+      - '#f2cdcd'
+    cherryPickedCommitFgColor:
+      - '#89b4fa'
+    unstagedChangesColor:
+      - '#ff0000'
+    defaultFgColor:
+      - '#cdd6f4'
+    searchingActiveBorderColor:
+      - '#fab387'
+      - bold
+  nerdFontsVersion: '3'
+{{- if .headless }}
+os:
+  # No clipboard tool exists on a headless box, so copy with OSC 52 instead.
+  # Written to /dev/tty because lazygit captures the command's stdout.
+  copyToClipboardCmd: printf "\033]52;c;%s\a" "$(printf %s {{"{{"}}text{{"}}"}} | base64 | tr -d '\n')" > /dev/tty
+{{- end }}
