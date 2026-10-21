@@ -10,6 +10,11 @@ return {
         "<cmd>CodeDiff<cr>",
         desc = "CodeDiff",
       },
+      {
+        "<leader>gC",
+        ":CodeDiff ",
+        desc = "CodeDiff (with args)",
+      },
     },
     opts = {
       explorer = {
