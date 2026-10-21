@@ -1,4 +1,7 @@
 # ~/.config/chezmoi/chezmoi.toml
+[data]
+    headless = false
+
 [data.llama]
     endpoint_fim = "http://localhost:8012/infill"
 

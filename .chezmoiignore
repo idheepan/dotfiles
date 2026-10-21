@@ -1,3 +1,5 @@
+AGENTS.md
+chezmoi.sample.toml
 {{ if .headless }}
 .config/ghostty
 {{ end }}
