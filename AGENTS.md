@@ -31,14 +31,14 @@ scope, so don't add branches or files for them.
 - `private_dot_config/nvim/` is LazyVim, with one file per plugin spec in
   `lua/plugins/`.
 - `private_dot_config/tmux/`: `tmux.conf` sources files from `modules/`, and
-  third-party plugins are pulled in by `.chezmoiexternal.toml`. Don't vendor
-  plugins.
+  third-party plugins are pulled in by the `.chezmoiexternal.toml` in that
+  directory. Don't vendor plugins.
 - `dot_claude/` holds Claude Code settings and hooks. `dot_local/bin/` holds
   user scripts. `claude-tmux` connects Claude hooks to the tmux status bar.
 - Shells: on Linux it's bash (`dot_bashrc`, `dot_bash_profile`), and on macOS
   it's zsh (`dot_zshrc`). An alias or env change usually belongs in both.
 
-Repo-only files (README, this file, `chezmoi.sample.toml`) get copied into
+Repo-only files (this file, `chezmoi.sample.toml`) get copied into
 `$HOME` unless their name starts with `.` or they're listed in
 `.chezmoiignore`. After adding one, check `chezmoi managed`.
 
@@ -70,7 +70,8 @@ so always guard it with `hasKey`:
 Machine-specific values go under `[data]` in
 `~/.config/chezmoi/chezmoi.toml`, never hardcoded. Current keys:
 
-- `headless` (top-level): read by `.chezmoiignore`.
+- `headless` (top-level): read by `.chezmoiignore` and
+  `lazygit/config.yml.tmpl`.
 - `llama.endpoint_fim`: optional, falls back to localhost.
 
 chezmoi errors on a missing key. When you add a key, read it defensively with
@@ -87,11 +88,15 @@ and document it in `chezmoi.sample.toml`.
 
   ```bash
   chezmoi execute-template --override-data \
-    '{"chezmoi":{"os":"darwin"},"headless":false}' < path/to/file.tmpl
+    '{"chezmoi":{"os":"darwin","osRelease":{"id":"darwin"}},"headless":false}' \
+    < path/to/file.tmpl
   ```
 
-  Check every platform a template branches on, and check `chezmoi ignored`
-  when you touch the ignore files.
+  Always override `osRelease.id` as well. Otherwise it keeps this machine's
+  value, so on NixOS a "darwin" render still takes the NixOS branch. For Arch,
+  use `{"chezmoi":{"osRelease":{"id":"arch"}}}`. Check every platform a
+  template branches on, and check `chezmoi ignored` when you touch the ignore
+  files.
 - Linters: `markdownlint-cli2` (config in repo), `stylua` for Neovim Lua,
   `shellcheck` for shell scripts.
 - Commit messages are a short imperative sentence with no type prefix, for
