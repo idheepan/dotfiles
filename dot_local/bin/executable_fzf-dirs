@@ -1,0 +1,28 @@
+#!/bin/sh
+# desc: List directories for fzf's Alt+C, minus build and env noise
+#
+# Skips .git, .direnv, node_modules and __pycache__ everywhere, and a target/
+# directory only when a Cargo.toml sits next to it (Maven etc. keep theirs).
+
+fd --type d --hidden --strip-cwd-prefix \
+  --exclude .git --exclude .direnv --exclude node_modules --exclude __pycache__ |
+  awk '
+    {
+      n = split($0, parts, "/")
+      prefix = ""
+      skip = 0
+      for (i = 1; i <= n; i++) {
+        if (parts[i] == "target") {
+          if (!(prefix in cargo)) {
+            f = (prefix == "" ? "" : prefix "/") "Cargo.toml"
+            # getline returns -1 when the file cannot be opened
+            cargo[prefix] = ((getline line < f) >= 0)
+            close(f)
+          }
+          if (cargo[prefix]) { skip = 1; break }
+        }
+        prefix = (prefix == "" ? parts[i] : prefix "/" parts[i])
+      }
+      if (!skip) print
+    }
+  '

@@ -5,6 +5,8 @@ alias gg="lazygit"
 
 export EDITOR="nvim"
 # Set up fzf key bindings and fuzzy completion
+# Alt+C skips build and env dirs
+export FZF_ALT_C_COMMAND="fzf-dirs"
 source <(fzf --zsh)
 eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"

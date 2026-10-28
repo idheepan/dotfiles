@@ -36,6 +36,8 @@ if [ -d "/opt/android-studio" ] && [ -d "$HOME/Android/Sdk" ]; then
 fi
 
 
+# Alt+C skips build and env dirs
+export FZF_ALT_C_COMMAND="fzf-dirs"
 eval "$(fzf --bash)"
 eval "$(starship init bash)"
 # Keep this at the end of .bashrc
