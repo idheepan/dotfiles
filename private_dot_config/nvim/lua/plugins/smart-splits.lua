@@ -1,5 +1,6 @@
 -- Alt + h/a/o/e (left/down/up/right on Graphite) moves between nvim splits and
 -- hands off to tmux panes at the edge. Matches the bindings in tmux.conf.
+-- Also mapped in terminal mode so it works from nvim terminals like lazygit.
 return {
   {
     "mrjones2014/smart-splits.nvim",
@@ -10,6 +11,9 @@ return {
     },
     opts = {
       mux = { backend = "smart-splits-backend-tmux" },
+      -- From a float (e.g. the lazygit terminal), go straight to tmux instead of
+      -- focusing the previous window, which would close the float.
+      move = { float = "mux" },
     },
     keys = {
       {
@@ -17,6 +21,7 @@ return {
         function()
           require("smart-splits").move_cursor_left()
         end,
+        mode = { "n", "t" },
         desc = "Go to left split/pane",
       },
       {
@@ -24,6 +29,7 @@ return {
         function()
           require("smart-splits").move_cursor_down()
         end,
+        mode = { "n", "t" },
         desc = "Go to lower split/pane",
       },
       {
@@ -31,6 +37,7 @@ return {
         function()
           require("smart-splits").move_cursor_up()
         end,
+        mode = { "n", "t" },
         desc = "Go to upper split/pane",
       },
       {
@@ -38,6 +45,7 @@ return {
         function()
           require("smart-splits").move_cursor_right()
         end,
+        mode = { "n", "t" },
         desc = "Go to right split/pane",
       },
     },
