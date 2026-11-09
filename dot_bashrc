@@ -35,6 +35,11 @@ if [ -d "/opt/android-studio" ] && [ -d "$HOME/Android/Sdk" ]; then
     fi
 fi
 
+HISTSIZE=100000
+HISTFILESIZE=200000
+HISTCONTROL=ignoreboth
+shopt -s histappend
+PROMPT_COMMAND="history -a; history -n${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 
 # Alt+C skips build and env dirs
 export FZF_ALT_C_COMMAND="fzf-dirs"

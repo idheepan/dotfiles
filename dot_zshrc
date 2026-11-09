@@ -4,6 +4,11 @@ alias v="nvim"
 alias gg="lazygit"
 
 export EDITOR="nvim"
+
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=100000
+SAVEHIST=100000
+setopt SHARE_HISTORY HIST_IGNORE_SPACE HIST_IGNORE_DUPS
 # Set up fzf key bindings and fuzzy completion
 # Alt+C skips build and env dirs
 export FZF_ALT_C_COMMAND="fzf-dirs"
