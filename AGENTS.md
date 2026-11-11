@@ -74,6 +74,11 @@ Machine-specific values go under `[data]` in
   `lazygit/config.yml.tmpl`.
 - `llama.endpoint_fim`: optional, falls back to localhost.
 
+Git identity is the exception: `dot_gitconfig` includes `~/.gitconfig.local`,
+which chezmoi doesn't manage. On each new machine run
+`git config --file ~/.gitconfig.local user.name "..."` and the same for
+`user.email`.
+
 chezmoi errors on a missing key. When you add a key, read it defensively with
 `index` and a fallback (see `completion.lua.tmpl`),
 and document it in `chezmoi.sample.toml`.

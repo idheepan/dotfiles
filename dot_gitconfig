@@ -1,0 +1,9 @@
+[init]
+	defaultBranch = main
+[push]
+	useForceIfIncludes = true
+[rebase]
+	updateRefs = true
+# Per-machine identity (user.name / user.email) lives in ~/.gitconfig.local,
+[include]
+	path = ~/.gitconfig.local
