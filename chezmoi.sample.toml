@@ -4,3 +4,7 @@
 
 [data.llama]
     endpoint_fim = "http://localhost:8012/infill"
+
+# Optional. Cargo workspace the device-sw-rust Claude plugin pins rust-analyzer to.
+[data.device_sw]
+    host_dir = "/home/me/work/device-sw/host"

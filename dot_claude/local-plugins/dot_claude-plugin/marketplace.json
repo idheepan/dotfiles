@@ -1,0 +1,14 @@
+{
+  "name": "dotfiles-local",
+  "description": "Plugins kept in the chezmoi dotfiles",
+  "owner": {
+    "name": "dotfiles"
+  },
+  "plugins": [
+    {
+      "name": "device-sw-rust",
+      "description": "rust-analyzer for the device-sw host workspace, run in its devshell and shared between sessions through lspmux",
+      "source": "./device-sw-rust"
+    }
+  ]
+}

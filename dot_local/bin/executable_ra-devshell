@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# desc: run rust-analyzer inside the direnv devshell of the current directory
+#
+# Picks up the workspace's own toolchain, its matching proc-macro server, and the
+# tools build scripts need (protoc, ...). lspmux spawns this with the workspace root
+# as the working directory. Without direnv it runs rust-analyzer from PATH.
+set -euo pipefail
+
+if command -v direnv >/dev/null 2>&1; then
+	exec direnv exec . rust-analyzer "$@"
+fi
+exec rust-analyzer "$@"

@@ -1,0 +1,30 @@
+{{- $hostDir := joinPath .chezmoi.homeDir "work/device-sw/host" -}}
+{{- if and (index . "device_sw") (index .device_sw "host_dir") -}}
+{{-   $hostDir = .device_sw.host_dir -}}
+{{- end -}}
+{
+  "name": "device-sw-rust",
+  "description": "rust-analyzer for the device-sw host workspace, run in its devshell and shared between sessions through lspmux",
+  "version": "0.1.0",
+  "lspServers": {
+    "rust-analyzer": {
+      "command": "ra-lspmux",
+      "args": [{{ $hostDir | toJson }}],
+      "workspaceFolder": {{ $hostDir | toJson }},
+      "extensionToLanguage": {
+        ".rs": "rust"
+      },
+      "initializationOptions": {
+        "cargo": {
+          "targetDir": true
+        },
+        "imports": {
+          "granularity": {
+            "group": "module"
+          }
+        }
+      },
+      "restartOnCrash": true
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# lspmux shares one rust-analyzer between Claude Code sessions. ra-lspmux in
+# ~/.local/bin starts the server and creates the socket's directory.
+
+# Keep an idle instance warm for an hour: indexing device-sw from cold is slow.
+instance_timeout = 3600
+gc_interval = 10
+
+# A unix socket, unlike the default TCP port, stops other local users from asking
+# the server to spawn commands as this user.
+listen = "{{ .chezmoi.homeDir }}/.local/state/lspmux/lspmux.sock"
+connect = "{{ .chezmoi.homeDir }}/.local/state/lspmux/lspmux.sock"
+
+log_filters = "info"
+pass_environment = []

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# desc: rust-analyzer for Claude Code, shared between sessions through lspmux
+#
+# ra-lspmux <workspace-dir>
+#
+# Every Claude session connects to one warm rust-analyzer per workspace instead of
+# indexing from cold. Starts the lspmux server on first use; its socket and log live
+# in ~/.local/state/lspmux, matching ~/.config/lspmux/config.toml. Without lspmux it
+# runs rust-analyzer directly in the workspace devshell.
+set -euo pipefail
+
+workspace=${1:?usage: ra-lspmux <workspace-dir>}
+devshell_ra="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ra-devshell"
+state_dir=$HOME/.local/state/lspmux
+cd "$workspace"
+
+if ! command -v lspmux >/dev/null 2>&1; then
+	exec "$devshell_ra"
+fi
+
+start_server() {
+	lspmux status >/dev/null 2>&1 && return
+	local detach=()
+	command -v setsid >/dev/null 2>&1 && detach=(setsid)
+	# Outlive this session, and drop its direnv state so instances don't inherit it.
+	(cd / && exec env -u DIRENV_DIR -u DIRENV_FILE -u DIRENV_DIFF -u DIRENV_WATCHES \
+		${detach[@]+"${detach[@]}"} lspmux server) >>"$state_dir/server.log" 2>&1 </dev/null 9>&- &
+	for _ in $(seq 50); do
+		lspmux status >/dev/null 2>&1 && return
+		sleep 0.1
+	done
+}
+
+mkdir -p "$state_dir"
+# A new server deletes the existing socket before binding, so serialize starts.
+if command -v flock >/dev/null 2>&1; then
+	exec 9>"$state_dir/start.lock"
+	flock 9
+	start_server
+	exec 9>&-
+else
+	start_server
+fi
+
+exec lspmux client --server-path "$devshell_ra"

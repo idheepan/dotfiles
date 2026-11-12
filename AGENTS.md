@@ -73,6 +73,8 @@ Machine-specific values go under `[data]` in
 - `headless` (top-level): read by `.chezmoiignore` and
   `lazygit/config.yml.tmpl`.
 - `llama.endpoint_fim`: optional, falls back to localhost.
+- `device_sw.host_dir`: optional, read by the `device-sw-rust` plugin in
+  `dot_claude/local-plugins/`. Falls back to `~/work/device-sw/host`.
 
 Git identity is the exception: `dot_gitconfig` includes `~/.gitconfig.local`,
 which chezmoi doesn't manage. On each new machine run
