@@ -1,0 +1,39 @@
+# Syntax roles joined onto SCIP occurrences by codemap.py. SCIP only says "reference"; these say
+# whether a reference sits in a pattern (consumer), a struct literal (producer), or a macro body
+# that tree-sitter leaves unparsed (codemap.py falls back to reading the line there).
+id: pattern
+language: rust
+rule:
+  all:
+    - any: [{kind: identifier}, {kind: scoped_identifier}, {kind: type_identifier}, {kind: scoped_type_identifier}]
+    - any:
+        - inside:
+            stopBy: end
+            any: [{kind: match_pattern}, {kind: tuple_struct_pattern}, {kind: struct_pattern}, {kind: or_pattern}, {kind: tuple_pattern}, {kind: slice_pattern}, {kind: ref_pattern}, {kind: captured_pattern}]
+        - inside: {kind: let_condition, field: pattern}
+        - inside: {kind: let_declaration, field: pattern}
+    # Match guards live inside match_pattern but are expressions. Only look up to the nearest
+    # pattern so a match inside a closure argument still counts as a pattern.
+    - not:
+        inside:
+          stopBy: {any: [{kind: match_pattern}, {kind: let_condition}, {kind: let_declaration}]}
+          any: [{kind: arguments}, {kind: binary_expression}, {kind: call_expression}]
+---
+id: struct-literal
+language: rust
+rule:
+  any: [{kind: type_identifier}, {kind: scoped_type_identifier}]
+  inside: {kind: struct_expression, field: name}
+---
+id: macro
+language: rust
+rule:
+  kind: identifier
+  inside: {kind: token_tree, stopBy: end}
+---
+# Tuple-struct construction (`SupportPackId(uuid)`) is a call expression, not a struct literal.
+id: call-target
+language: rust
+rule:
+  any: [{kind: identifier}, {kind: scoped_identifier}]
+  inside: {kind: call_expression, field: function}

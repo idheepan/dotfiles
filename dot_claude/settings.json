@@ -17,15 +17,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/agents-md-loader.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
             "command": "~/.local/bin/claude-tmux hook"
           }
         ]
@@ -92,7 +83,9 @@
     "frontend-design@claude-plugins-official": true,
     "lua-lsp@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "figma@claude-plugins-official": false,
+    "figma@synced": false
   },
   "modelSettings": {
     "claude-sonnet-5-5": {
@@ -103,5 +96,79 @@
     }
   },
   "skipDangerousModePermissionPrompt": true,
-  "theme": "auto"
+  "theme": "auto",
+  "deniedMcpServers": [
+    {
+      "serverName": "claude.ai Atlassian"
+    },
+    {
+      "serverName": "claude.ai Atlassian MCP"
+    },
+    {
+      "serverName": "claude.ai Atlassian Rovo"
+    },
+    {
+      "serverName": "claude.ai Asana"
+    },
+    {
+      "serverName": "claude.ai Asana (2)"
+    },
+    {
+      "serverName": "claude.ai Box"
+    },
+    {
+      "serverName": "claude.ai Canva"
+    },
+    {
+      "serverName": "claude.ai ChEMBL"
+    },
+    {
+      "serverName": "claude.ai Clinical Trials"
+    },
+    {
+      "serverName": "claude.ai Gmail"
+    },
+    {
+      "serverName": "claude.ai Google Calendar"
+    },
+    {
+      "serverName": "claude.ai Google Docs"
+    },
+    {
+      "serverName": "claude.ai Google Drive"
+    },
+    {
+      "serverName": "claude.ai Google Sheets"
+    },
+    {
+      "serverName": "claude.ai Google Slides"
+    },
+    {
+      "serverName": "claude.ai HubSpot"
+    },
+    {
+      "serverName": "claude.ai Intercom"
+    },
+    {
+      "serverName": "claude.ai Linear"
+    },
+    {
+      "serverName": "claude.ai monday.com"
+    },
+    {
+      "serverName": "claude.ai Netlify"
+    },
+    {
+      "serverName": "claude.ai PubMed"
+    },
+    {
+      "serverName": "claude.ai Zapier"
+    },
+    {
+      "serverName": "claude.ai bioRxiv"
+    },
+    {
+      "serverName": "claude.ai Figma"
+    }
+  ]
 }

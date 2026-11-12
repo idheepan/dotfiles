@@ -3,3 +3,5 @@ chezmoi.sample.toml
 {{ if .headless }}
 .config/ghostty
 {{ end }}
+
+**/__pycache__

@@ -1,0 +1,409 @@
+#!/usr/bin/env bash
+# codemap: commit-keyed SCIP index of a Rust workspace, plus deterministic queries over it.
+#
+#   codemap index  [--repo DIR] [--rev REV] [--ws DIR] [--shell NAME] [--timeout S] [--fg]
+#                  (starts a background build if needed, waits up to S=100 s; exit 4 = still running)
+#   codemap wait   [opts] [--timeout S]                      (block until the running index finishes; exit 4 = still running)
+#   codemap rebuild [--repo DIR] [--rev REV] [--ws DIR]   (roles + graph only; queries do this by themselves when stale)
+#   codemap status [--repo DIR] [--rev REV] [--ws DIR]       (exit 0 indexed, 3 not indexed, 4 indexing)
+#   codemap find   [opts] REGEX [--kinds Struct,Enum,...]
+#   codemap refs   [opts] REGEX
+#   codemap render [opts] SLUG|FILTER.json [OUT_DIR] [--artifact]   (writes OUT_DIR/index.html)
+#   codemap seeds  [opts] SLUG|FILTER.json                   (dry run of seed_types/seed_fns: what matches, why not; writes nothing)
+#   codemap page   SLUG|OUT_DIR [--artifact]                 (re-assemble after editing notes.html)
+#   codemap shot   SLUG|OUT_DIR [PNG]                        (screenshot of index.html, default OUT_DIR/screenshot.png)
+#   codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles]   (read graph.json; no ad-hoc Python)
+#   codemap lint                                             (ASCII-only files, page.html markers, syntax; run after editing the skill)
+#   codemap help
+#   codemap crates [opts] [REGEX]
+#   codemap modules [opts] CRATE... [--depth N] [--externals REGEX] [--exclude REGEX] [--skip REGEX]
+#   codemap verify [opts] DOC
+#   codemap cache
+#
+# SLUG means $CODEMAP_OUT/SLUG (default tmp-docs/07-generated/codemap/SLUG, relative to $PWD); OUT_DIR
+# defaults to the filter's folder. find/refs take --limit N; refs takes --by-fn.
+# Defaults: --repo = the git repo containing $PWD, --rev = HEAD, --ws = host, --shell = --ws.
+# With the default --rev HEAD and uncommitted changes, the index is of the WORKING TREE (a snapshot of
+# tracked edits plus untracked files, so untracked crates resolve); --committed indexes HEAD alone.
+# Any query on an unindexed tree starts the index itself, waits up to 100 s, and exits 4 if it is
+# still running: just repeat the command.
+set -euo pipefail
+
+SKILL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CACHE=${CODEMAP_CACHE:-$HOME/.cache/codemap}
+# Pinned so an index never changes under the same commit key because the wrapper moved.
+SCIP_RUST=${CODEMAP_SCIP_RUST:-github:scip-code/scip-rust/5e108f58d28fc1b40233997797b69573e3c6cf8b}
+
+die() { echo "codemap: $*" >&2; exit 1; }
+
+OUT_BASE=${CODEMAP_OUT:-tmp-docs/07-generated/codemap}
+# Output moved from tmp-docs/codemap/<slug> to tmp-docs/07-generated/codemap/<slug> (2026-11).
+LEGACY_BASE=tmp-docs/codemap
+# Resolve a SLUG or path to an existing folder. Tries, in order: the argument as given; a bare slug
+# under $OUT_BASE; the legacy base (as a slug, or as a path prefix remapped to the new base); each of
+# those again from each ancestor of $PWD, so it works from a subdirectory. Falls back to the canonical
+# new location (so `render` can create it). Prints a note on stderr when a legacy path was used.
+slug_dir() {
+    local arg=${1%/} rel="" cand dir cands=()
+    cands+=("$arg")
+    if [[ "$arg" == "$LEGACY_BASE"/* ]]; then rel=${arg#"$LEGACY_BASE"/}; cands+=("$OUT_BASE/$rel")
+    elif [[ "$arg" != */* ]]; then rel=$arg; cands+=("$OUT_BASE/$arg" "$LEGACY_BASE/$arg"); fi
+    # Walk up from $PWD so a run from a subdirectory still finds the folder (relative bases only).
+    if [[ "$OUT_BASE" != /* ]]; then
+        dir=$(dirname "$PWD")
+        while [ "$dir" != / ]; do
+            cands+=("$dir/$arg")
+            [ -n "$rel" ] && cands+=("$dir/$OUT_BASE/$rel" "$dir/$LEGACY_BASE/$rel")
+            dir=$(dirname "$dir")
+        done
+    fi
+    for cand in "${cands[@]}"; do
+        if [ -e "$cand" ]; then
+            [[ "$cand" == *"/$LEGACY_BASE/"* || "$cand" == "$LEGACY_BASE"/* ]] \
+                && echo "codemap: note: using legacy folder $cand; move it to $OUT_BASE/" >&2
+            echo "$cand"; return
+        fi
+    done
+    if [ -n "$rel" ]; then echo "$OUT_BASE/$rel"; else echo "$arg"; fi
+}
+
+[ "${1:-}" = --help ] && set -- help
+cmd=${1:-}; [ -n "$cmd" ] || die "usage: codemap <index|rebuild|status|find|refs|render|seeds|page|graph|lint|shot|crates|modules|verify|cache|help> ..."; shift
+repo=$PWD rev=HEAD ws=host shell="" committed=0 timeout=100 fg=0 rest=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --repo) repo=$2; shift 2 ;;
+        --rev) rev=$2; shift 2 ;;
+        --ws) ws=$2; shift 2 ;;
+        --shell) shell=$2; shift 2 ;;
+        --committed) committed=1; shift ;;
+        --timeout) timeout=$2; shift 2 ;;
+        --fg) fg=1; shift ;;
+        *) rest+=("$1"); shift ;;
+    esac
+done
+shell=${shell:-$ws}
+
+python_env() {
+    # One pinned-by-registry python with protobuf, plus scip_pb2 generated by the matching protoc.
+    local link=$CACHE/tools/python
+    if [ ! -e "$link/bin/python3" ]; then
+        mkdir -p "$CACHE/tools"
+        nix build --out-link "$link" --impure --expr \
+            'let p = (builtins.getFlake "nixpkgs").legacyPackages.${builtins.currentSystem}; in p.python3.withPackages (ps: [ ps.protobuf ])' >&2
+    fi
+    PB_DIR=$CACHE/tools/scip_pb/$(basename "$(readlink -f "$link")")
+    if [ ! -f "$PB_DIR/scip_pb2.py" ]; then
+        mkdir -p "$PB_DIR"
+        nix shell nixpkgs#protobuf --command protoc -I "$SKILL_DIR" --python_out="$PB_DIR" "$SKILL_DIR/scip.proto" >&2
+    fi
+    PY=$link/bin/python3
+}
+
+render_svgs() {
+    local out=$1 link=$CACHE/tools/mermaid-cli gv=$CACHE/tools/graphviz f name
+    for f in "$out"/*.dot; do
+        [ -e "$f" ] || continue
+        [ -e "$gv/bin/dot" ] || nix build --out-link "$gv" nixpkgs#graphviz >&2
+        "$gv/bin/dot" -Tsvg "$f" -o "${f%.dot}.svg" || die "graphviz failed on $f"
+    done
+    [ -e "$link/bin/mmdc" ] || nix build --out-link "$link" nixpkgs#mermaid-cli >&2
+    for f in "$out"/*.mmd; do
+        [ -e "$f" ] || continue
+        name=$(basename "$f" .mmd)
+        # A distinct svg id per diagram keeps their scoped styles and arrow markers apart on one page.
+        "$link/bin/mmdc" -q -c "$SKILL_DIR/mermaid.json" -I "dg-$name" -i "$f" -o "$out/$name.svg" >&2 \
+            || die "mermaid-cli failed on $f"
+    done
+}
+
+
+# ---- what is being indexed ------------------------------------------------------------------------
+# KEY names the tree: the commit, or commit+SNAP when the working tree has changes (SNAP = hash of the
+# tracked diff and the small untracked files). Docs (*.md) are ignored so a note edit doesn't reindex.
+# Untracked files over MAX_UNTRACKED bytes (captures, models) are left out of the snapshot.
+MAX_UNTRACKED=${CODEMAP_MAX_UNTRACKED:-2000000}
+SNAP_SPEC=(-- . ':(exclude)*.md')
+
+snap_prepare() {
+    # Sets $snap (empty when the tree is clean) and writes $CACHE/snap/$key/{diff.patch,untracked.tar}.
+    local d f
+    snap="" snap_files=0
+    mkdir -p "$CACHE/snap"
+    d=$(mktemp -d "$CACHE/snap/.tmp.XXXXXX")
+    git -C "$top" diff HEAD --binary "${SNAP_SPEC[@]}" > "$d/diff.patch"
+    : > "$d/untracked.z"
+    while IFS= read -r -d '' f; do
+        [ -f "$top/$f" ] && [ "$(stat -c %s "$top/$f")" -le "$MAX_UNTRACKED" ] && printf '%s\0' "$f" >> "$d/untracked.z"
+    done < <(git -C "$top" ls-files -o --exclude-standard -z "${SNAP_SPEC[@]}")
+    if [ ! -s "$d/diff.patch" ] && [ ! -s "$d/untracked.z" ]; then rm -rf "$d"; return; fi
+    snap=$({ cat "$d/diff.patch"
+             tr '\0' '\n' < "$d/untracked.z"
+             (cd "$top" && xargs -0 -r git hash-object -- < "$d/untracked.z")
+           } | sha1sum | cut -c1-10)
+    snap_files=$(git -C "$top" status --porcelain "${SNAP_SPEC[@]}" | wc -l)
+    if [ -d "$CACHE/snap/$commit+$snap" ]; then rm -rf "$d"; return; fi
+    (cd "$top" && tar --null -T "$d/untracked.z" -cf "$d/untracked.tar")
+    mv "$d" "$CACHE/snap/$commit+$snap" 2>/dev/null || rm -rf "$d"
+}
+
+resolve() {
+    top=$(git -C "$repo" rev-parse --show-toplevel) || die "$repo is not in a git repo"
+    common=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir)
+    commit=$(git -C "$top" rev-parse --verify "$rev^{commit}") || die "unknown rev $rev"
+    snap="" snap_files=0
+    if [ -n "${CODEMAP_SNAP_FIXED+x}" ]; then snap=$CODEMAP_SNAP_FIXED          # background worker: use what the launcher saw
+    elif [ "$rev" = HEAD ] && [ "$committed" = 0 ]; then snap_prepare; fi
+    key=$commit${snap:++$snap}
+    INDEX=$CACHE/index/$key/$ws
+    RUNBASE=$CACHE/run/$key-$ws
+    label=${commit:0:10}${snap:+ + working tree $snap}
+}
+
+# ---- keeping the graph current ---------------------------------------------------------------------
+# Syntax roles + graph from an index.scip, reading sources from a checkout of the same tree.
+build_graph() {
+    local src_ws=$1 dir=$2
+    (cd "$src_ws" && nix shell nixpkgs#ast-grep --command ast-grep scan --rule "$SKILL_DIR/roles.yml" --json=stream) \
+        | "$PY" -I -c 'import json,sys
+for l in sys.stdin:
+    j = json.loads(l); print(json.dumps({"file": j["file"], "range": j["range"], "ruleId": j["ruleId"]}))' > "$dir/roles.jsonl"
+    "$PY" -I "$SKILL_DIR/codemap.py" build "$dir" "$src_ws" "$PB_DIR"
+}
+
+checkout() {
+    # Puts the clone at the indexed tree: the commit, then (for a snapshot) the saved diff and untracked
+    # files committed on top inside the clone, so `nix develop git+file://` sees untracked crates too.
+    # Sets $src and $srccommit. Holds the clone lock until this process exits.
+    local sd=$CACHE/snap/$key
+    name=$(basename "$(dirname "$common")")-$(printf %s "$common" | sha1sum | cut -c1-8)
+    src=$CACHE/src/$name
+    mkdir -p "$CACHE/src"
+    exec 9>"$src.lock"
+    flock 9
+    # A shared clone borrows objects from the user's repo (any local commit resolves) and never
+    # writes to it. One stable path per repo keeps cargo's target dir incremental across commits.
+    # The target dir stays inside the workspace: rust-analyzer only emits symbol info (fields,
+    # signatures) for generated proto sources that live under the project root.
+    [ -d "$src/.git" ] || git clone --quiet --shared --no-checkout "$common" "$src"
+    git -C "$src" checkout --quiet --detach --force "$commit"
+    git -C "$src" clean -ffdxq -e "/$ws/target"
+    srccommit=$commit
+    if [ -n "$snap" ]; then
+        [ -d "$sd" ] || die "snapshot $snap is gone ($sd); rerun the command"
+        if [ -s "$sd/diff.patch" ]; then
+            git -C "$src" apply --binary --whitespace=nowarn "$sd/diff.patch" || die "could not apply the working-tree diff onto ${commit:0:10}"
+        fi
+        [ -s "$sd/untracked.tar" ] && tar -C "$src" -xf "$sd/untracked.tar"
+        git -C "$src" add -A
+        git -C "$src" -c user.name=codemap -c user.email=codemap@localhost -c commit.gpgsign=false \
+            commit --quiet --allow-empty -m "codemap snapshot $key"
+        srccommit=$(git -C "$src" rev-parse HEAD)
+    fi
+    [ -f "$src/$ws/Cargo.toml" ] || die "$ws/Cargo.toml not found at ${commit:0:10}"
+}
+
+rebuild_graph() {
+    python_env; checkout
+    build_graph "$src/$ws" "$INDEX"
+}
+
+fresh_graph() {
+    # A graph from an older codemap.py is rebuilt right here (about 5 s) instead of failing the query.
+    python_env
+    [ "$(cat "$INDEX/graph.version" 2>/dev/null)" = "$("$PY" -I "$SKILL_DIR/codemap.py" version)" ] && return 0
+    echo "codemap: graph is from an older codemap.py; rebuilding it (about 5 s) ..." >&2
+    rebuild_graph >&2
+}
+
+# ---- background indexing -----------------------------------------------------------------------------
+index_alive() { [ -f "$RUNBASE.pid" ] && kill -0 "$(cat "$RUNBASE.pid")" 2>/dev/null; }
+
+index_phase() { echo "$1 $(date +%s)" > "$RUNBASE.state"; }
+
+do_index() {
+    # Runs in the background worker (or in the foreground with --fg).
+    local start tmp
+    python_env
+    index_phase "preparing the checkout"
+    checkout
+    tmp=$INDEX.tmp.$$
+    rm -rf "$tmp"; mkdir -p "$tmp"
+    start=$(date +%s)
+    index_phase "running rust-analyzer in the devshell"
+    echo "indexing $label/$ws in nix develop .#$shell ..." >&2
+    # rust-analyzer must run inside the devshell: build scripts there generate the proto types.
+    # Outside it scip-rust falls back to nixpkgs' toolchain and proto references go unresolved.
+    nix develop "git+file://$src?rev=$srccommit#$shell" --command bash -c '
+        set -euo pipefail
+        cd "$1/$2"
+        unset CARGO_TARGET_DIR
+        cargo metadata --format-version 1 > "$3/metadata.json"
+        rust-analyzer --version > "$3/rust-analyzer.version"
+        nix run "$4" -- . --output "$3/index.scip"
+    ' _ "$src" "$ws" "$tmp" "$SCIP_RUST" > "$tmp/scip.log" 2>&1 \
+        || { tail -20 "$tmp/scip.log" >&2; die "indexing failed; log at $tmp/scip.log"; }
+    index_phase "building the graph"
+    build_graph "$src/$ws" "$tmp"
+    "$PY" -I -c 'import json,sys; json.dump(dict(zip(["commit","snapshot","workspace","repo","indexed_at","seconds","rust_analyzer","scip_rust"], sys.argv[1:])), open(sys.argv[-1] + "/meta.json", "w"), indent=1)' \
+        "$commit" "$snap" "$ws" "$top" "$(date -Iseconds)" "$(($(date +%s) - start))" "$(cat "$tmp/rust-analyzer.version")" "$SCIP_RUST" "$tmp"
+    mkdir -p "$(dirname "$INDEX")"
+    rm -rf "$INDEX"; mv "$tmp" "$INDEX"
+    echo "indexed: $INDEX ($(($(date +%s) - start))s)"
+}
+
+start_index() {
+    # Idempotent: does nothing if the index exists or a worker is already running.
+    mkdir -p "$CACHE/run"
+    exec 8>"$RUNBASE.start"; flock 8
+    if [ -f "$INDEX/graph.pkl" ] || index_alive; then flock -u 8; return 0; fi
+    rm -f "$RUNBASE.state"
+    echo "codemap: indexing $label/$ws in the background (about 2-3 min; log $RUNBASE.log)" >&2
+    CODEMAP_SNAP_FIXED=$snap setsid nohup "${BASH_SOURCE[0]}" index-worker --repo "$top" --rev "$commit" --ws "$ws" --shell "$shell" \
+        > "$RUNBASE.log" 2>&1 < /dev/null 8>&- 9>&- &
+    echo $! > "$RUNBASE.pid"
+    flock -u 8
+}
+
+wait_index() {
+    # Returns 0 when indexed, 4 when the limit is hit with the worker still running, 1 if it failed.
+    local limit=${1:-100} t0=$SECONDS last="" phase since
+    while :; do
+        [ -f "$INDEX/graph.pkl" ] && return 0
+        if ! index_alive; then
+            [ -f "$INDEX/graph.pkl" ] && return 0
+            echo "codemap: indexing $label/$ws failed. Last log lines ($RUNBASE.log):" >&2
+            tail -15 "$RUNBASE.log" >&2 2>/dev/null || true
+            return 1
+        fi
+        phase=$(cut -d' ' -f1- "$RUNBASE.state" 2>/dev/null || true)
+        since=${phase##* }; phase=${phase% *}
+        if [ "$phase" != "$last" ] || [ $(( (SECONDS - t0) % 20 )) -lt 2 ]; then
+            echo "codemap: indexing $label/$ws: ${phase:-starting} ($(( $(date +%s) - ${since:-$(date +%s)} ))s in this step)" >&2
+            last=$phase
+        fi
+        [ $((SECONDS - t0)) -ge "$limit" ] && return 4
+        sleep 2
+    done
+}
+
+ensure_index() {
+    # Every query goes through here: index on demand, wait, and repeat-the-command on timeout.
+    local rc=0
+    if [ ! -f "$INDEX/graph.pkl" ]; then
+        start_index
+        wait_index "$timeout" || rc=$?
+        case $rc in
+            0) ;;
+            4) echo "codemap: still indexing $label/$ws; run the same command again (or: codemap wait)." >&2; exit 4 ;;
+            *) exit 1 ;;
+        esac
+    fi
+    fresh_graph
+}
+
+case "$cmd" in
+index)
+    resolve
+    if [ "$fg" = 1 ]; then
+        [ -f "$INDEX/graph.pkl" ] && { echo "cached: $INDEX"; exit 0; }
+        do_index
+        exit 0
+    fi
+    [ -f "$INDEX/graph.pkl" ] && { fresh_graph; echo "cached: $INDEX"; exit 0; }
+    ensure_index
+    echo "indexed: $INDEX"
+    ;;
+index-worker)
+    # Internal: the detached process start_index launches.
+    resolve
+    trap 'rc=$?; [ $rc -ne 0 ] && index_phase "failed"; exit $rc' EXIT
+    do_index
+    ;;
+wait)
+    resolve
+    [ -f "$INDEX/graph.pkl" ] && { echo "cached: $INDEX"; exit 0; }
+    index_alive || { echo "codemap: nothing is indexing $label/$ws; run: codemap index" >&2; exit 3; }
+    rc=0; wait_index "$timeout" || rc=$?
+    [ $rc = 0 ] && echo "indexed: $INDEX"
+    [ $rc = 4 ] && echo "codemap: still indexing; run codemap wait again." >&2
+    exit $rc
+    ;;
+rebuild)
+    # Refresh roles and graph after a script change, without re-running rust-analyzer.
+    resolve
+    [ -f "$INDEX/graph.pkl" ] || ensure_index
+    rebuild_graph
+    ;;
+status)
+    resolve
+    echo "tree: $label${snap:+ ($snap_files changed files, docs excluded)}" >&2
+    if [ -f "$INDEX/graph.pkl" ]; then cat "$INDEX/meta.json"
+    elif index_alive; then echo "indexing: $label/$ws (codemap wait)"; exit 4
+    else echo "not indexed: $label/$ws (run: codemap index)"; exit 3; fi
+    ;;
+render)
+    # graph.json + .mmd from the index, SVGs from mermaid-cli, then the HTML page.
+    resolve; ensure_index; python_env
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap render SLUG|FILTER.json [OUT_DIR] [--artifact]"
+    flt=${rest[0]}
+    [ -f "$flt" ] || flt=$(slug_dir "$flt")/filter.json
+    [ -f "$flt" ] || die "no filter at $flt"
+    if [ ${#rest[@]} -ge 2 ] && [[ "${rest[1]}" != --* ]]; then out=${rest[1]}; extra=("${rest[@]:2}")
+    else out=$(dirname "$flt"); extra=("${rest[@]:1}"); fi
+    "$PY" -I "$SKILL_DIR/codemap.py" render "$INDEX" "$flt" "$out"
+    render_svgs "$out"
+    "$PY" -I "$SKILL_DIR/codemap.py" page "$out" ${extra[@]+"${extra[@]}"}
+    ;;
+seeds)
+    # Same selection code as render, so a pattern that matches here matches there. Exit 2 if nothing matched.
+    resolve; ensure_index; python_env
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap seeds SLUG|FILTER.json"
+    flt=${rest[0]}
+    [ -f "$flt" ] || flt=$(slug_dir "$flt")/filter.json
+    [ -f "$flt" ] || die "no filter at $flt"
+    "$PY" -I "$SKILL_DIR/codemap.py" seeds "$INDEX" "$flt"
+    ;;
+page)
+    # Re-assemble the HTML after editing notes.html; no index needed.
+    python_env
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap page SLUG|OUT_DIR [--artifact]"
+    "$PY" -I "$SKILL_DIR/codemap.py" page "$(slug_dir "${rest[0]}")" "${rest[@]:1}"
+    ;;
+graph)
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles]"
+    python_env
+    "$PY" -I "$SKILL_DIR/codemap.py" graph "$(slug_dir "${rest[0]}")" "${rest[@]:1}"
+    ;;
+lint)
+    bash -n "${BASH_SOURCE[0]}"
+    python_env
+    "$PY" -I "$SKILL_DIR/codemap.py" lint
+    ;;
+shot)
+    # Screenshot with the chromium bundled in mermaid-cli. Read the PNG only when `render`'s summary looks wrong.
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap shot SLUG|OUT_DIR [PNG]"
+    dir=$(cd "$(slug_dir "${rest[0]}")" && pwd) || die "no such output folder"
+    png=${rest[1]:-$dir/screenshot.png}
+    mmdc=$(readlink -f "$CACHE/tools/mermaid-cli")/bin/mmdc
+    [ -e "$mmdc" ] || die "mermaid-cli not built yet; run codemap render first"
+    chrome=$(grep -o '/nix/store/[^ "]*chromium[^ "/]*/bin/chromium' "$mmdc" | head -1)
+    [ -n "$chrome" ] || die "no chromium found in $mmdc"
+    "$chrome" --headless --no-sandbox --window-size=1440,1000 --screenshot="$png" "file://$dir/index.html" >/dev/null 2>&1
+    echo "$png"
+    ;;
+help)
+    sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,1\}//'
+    ;;
+find | refs | crates | modules | verify)
+    resolve; ensure_index; python_env
+    "$PY" -I "$SKILL_DIR/codemap.py" "$cmd" "$INDEX" "${rest[@]}"
+    ;;
+cache)
+    du -sh "$CACHE"/index/*/* 2>/dev/null | while read -r size dir; do
+        echo "$size  ${dir#"$CACHE"/index/}  $(sed -n 's/.*"indexed_at": "\(.*\)".*/\1/p' "$dir/meta.json" 2>/dev/null)"
+    done
+    du -sh "$CACHE"/src "$CACHE"/snap 2>/dev/null || true
+    ;;
+*) die "unknown command $cmd" ;;
+esac
