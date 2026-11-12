@@ -10,8 +10,26 @@ return {
   opts = {
     servers = {
       rust_analyzer = {
+        -- Go through lspmux so every nvim and Claude Code session in a workspace
+        -- shares one warm rust-analyzer (see ~/.local/bin/ra-lspmux). Falls back
+        -- to a plain rust-analyzer when lspmux isn't installed.
+        cmd = vim.fn.executable("ra-lspmux") == 1 and function(dispatchers, config)
+          local root = config.root_dir or vim.uv.cwd()
+          return vim.lsp.rpc.start({ "ra-lspmux", root }, dispatchers, { cwd = root })
+        end or nil,
+        -- A shared instance keeps the settings of whichever client started it, so
+        -- keep these in sync with the device-sw-rust Claude plugin's
+        -- initializationOptions.
         settings = {
           ["rust-analyzer"] = {
+            cargo = {
+              targetDir = true,
+            },
+            imports = {
+              granularity = {
+                group = "module",
+              },
+            },
             inlayHints = {
               lifetimeElisionHints = {
                 enable = "always",

@@ -3,8 +3,8 @@
 .bashrc
 {{ end }}
 
-# Ignore Mac LaunchAgents on Linux/Windows
+# ~/Library only exists on macOS
 {{ if ne .chezmoi.os "darwin" }}
-Library/LaunchAgents/com.local.KeyRemapping.plist
+Library
 .zshrc
 {{ end }}
