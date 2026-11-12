@@ -1,6 +1,6 @@
 ---
 name: codemap
-description: Deterministic maps of Rust code from a rust-analyzer SCIP index (cached per commit): types behind a feature, who constructs or matches each type/variant, call chains, type tables, module dependency cycles, crate graphs, and checking a doc or diagram against the code. Use for any request to visualize, diagram, map or explain Rust types, data flow or module/crate dependencies in a cargo workspace such as device-sw, even if "codemap" is never said.
+description: 'Deterministic maps of Rust code from a rust-analyzer SCIP index (cached per commit): types behind a feature, who constructs or matches each type/variant, call chains, type tables, module dependency cycles, crate graphs, and checking a doc or diagram against the code. Use for any request to visualize, diagram, map or explain Rust types, data flow or module/crate dependencies in a cargo workspace such as device-sw, even if "codemap" is never said.'
 ---
 
 # codemap
