@@ -52,7 +52,7 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 48px;
 }
-.wrap { max-width: 1480px; margin: 0 auto; display: grid; gap: 28px; }
+.wrap { display: grid; gap: 28px; }
 code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 code, .mono, pre, .link, .site, .n, ul.members, td.num { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
 button { font: inherit; color: inherit; }
@@ -67,7 +67,7 @@ h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.1 var(--f-display); margin: 0; text-wr
 .meta details summary { cursor: pointer; }
 .meta pre { margin: 6px 0 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font: 12px/1.45 var(--f-mono); color: var(--fg); }
 
-.work { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.work { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 440px); gap: 20px; align-items: start; }
 @media (max-width: 1040px) { .work { grid-template-columns: minmax(0, 1fr); } }
 .stage { display: grid; gap: 10px; min-width: 0; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
@@ -79,6 +79,9 @@ h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.1 var(--f-display); margin: 0; text-wr
 .tools .count { font-size: 12px; color: var(--muted); min-width: 64px; }
 .iconbtn { border: 1px solid var(--line); background: var(--raised); border-radius: 6px; padding: 4px 10px; cursor: pointer; font: 600 14px/1.2 var(--f-mono); }
 .iconbtn:hover { border-color: var(--node-line); }
+.iconbtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.iconbtn.text { font: 600 13px/1.2 var(--f-display); letter-spacing: 0.03em; padding: 5px 10px; }
+.viewport { position: relative; min-width: 0; }
 .legend { margin: 0; font-size: 13px; color: var(--muted); max-width: 90ch; }
 .legend .sw { display: inline-block; width: 22px; height: 0; border-top: 2px solid; vertical-align: middle; margin: 0 4px 0 2px; }
 .sw.make { border-color: var(--make); } .sw.take { border-color: var(--take); border-top-style: dotted; } .sw.call { border-color: var(--edge); } .sw.cycle { border-color: var(--cycle); }
@@ -128,6 +131,22 @@ h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.1 var(--f-display); margin: 0; text-wr
 aside.inspector { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px)); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
 @media (max-width: 1040px) { aside.inspector { position: static; max-height: none; } }
 .inspector h2 { margin: 0; font: 600 20px/1.2 var(--f-display); overflow-wrap: anywhere; }
+.inspector .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.inspector .close { display: none; border: 0; background: none; padding: 0 4px; cursor: pointer; font: 18px/1 var(--f-body); color: var(--muted); }
+.inspector .close:hover { color: var(--fg); }
+
+/* Full screen: the stage covers the viewport and the inspector floats over the diagram's top right. */
+html.full-open { overflow: hidden; }
+.work.full { position: fixed; inset: 0; z-index: 20; display: block; background: var(--bg);
+  padding: max(10px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+.work.full .stage { height: 100%; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; }
+.work.full .viewport, .work.full #panes { height: 100%; min-height: 0; }
+.work.full .dg { height: 100%; }
+.work.full .legend { max-width: none; }
+.viewport > aside.inspector { position: absolute; top: 10px; right: 10px; z-index: 2; width: min(420px, calc(100% - 20px)); max-height: calc(100% - 20px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(6px); box-shadow: 0 10px 30px rgb(0 0 0 / 0.22); }
+.viewport > aside.inspector.closed { display: none; }
+.viewport > aside.inspector .close { display: inline-block; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font: 600 11px/1 var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
 .chip.seed { color: var(--accent); border-color: var(--accent); }
@@ -157,6 +176,8 @@ ul.members { margin: 0; padding: 0; list-style: none; font: 12px/1.6 var(--f-mon
 .site:hover { color: var(--accent); }
 .sites { display: grid; gap: 2px; padding: 4px 0 2px 10px; }
 .empty { color: var(--muted); margin: 0; }
+/* The hidden attribute must win over the display rules above (section.tables is a grid, .tools a flex row). */
+[hidden] { display: none !important; }
 
 section.notes { background: var(--note); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px 20px; display: grid; gap: 10px; }
 section.notes > .eyebrow { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -180,7 +201,16 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--lin
 th { font: 600 12px/1.2 var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--raised); position: sticky; top: 0; }
 tr:last-child td { border-bottom: 0; }
 td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var(--f-mono); }
-.toast { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 12px; border-radius: 6px; font: 12px var(--f-mono); max-width: min(520px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+th.sortable { padding: 0; }
+.sortbtn { display: flex; align-items: center; gap: 5px; width: 100%; border: 0; background: none; padding: 7px 10px; cursor: pointer; text-align: left; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; white-space: nowrap; }
+.sortbtn:hover { color: var(--fg); }
+.sortbtn::after { content: "↕"; opacity: 0.35; font-size: 11px; }
+th[aria-sort="ascending"] .sortbtn, th[aria-sort="descending"] .sortbtn { color: var(--accent); }
+th[aria-sort="ascending"] .sortbtn::after { content: "▲"; opacity: 1; font-size: 9px; }
+th[aria-sort="descending"] .sortbtn::after { content: "▼"; opacity: 1; font-size: 9px; }
+td.sitecell summary { cursor: pointer; font: 12px var(--f-mono); font-variant-numeric: tabular-nums; color: var(--fg); white-space: nowrap; }
+td.sitecell .sites { padding-left: 0; }
+.toast { position: fixed; z-index: 30; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 12px; border-radius: 6px; font: 12px var(--f-mono); max-width: min(520px, calc(100vw - 32px)); overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) { .dg svg .node, .dg svg path[data-role], .dg svg .edgeLabel { transition: opacity 120ms; } }
 </style>
 
@@ -203,10 +233,12 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
           <button class="iconbtn" id="zoom-out" type="button" aria-label="Zoom out">−</button>
           <button class="iconbtn" id="zoom-in" type="button" aria-label="Zoom in">+</button>
           <button class="iconbtn" id="zoom-fit" type="button">Fit</button>
+          <button class="iconbtn text" id="insp-toggle" type="button" aria-pressed="true" hidden>Inspector</button>
+          <button class="iconbtn text" id="full" type="button" aria-pressed="false" title="Full screen (F)">⤢ Full screen</button>
         </div>
       </div>
       <p class="legend" id="legend"></p>
-      <div id="panes"></div>
+      <div class="viewport" id="viewport"><div id="panes"></div></div>
     </div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
@@ -229,7 +261,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       <input id="edge-filter" type="search" placeholder="Filter by name or file" autocomplete="off" aria-label="Filter edges">
       <span class="n" id="edge-count"></span>
     </div>
-    <div class="tablewrap"><table id="edge-table"><thead><tr><th>From</th><th>Role</th><th>To</th><th>Sites</th><th>First site</th></tr></thead><tbody></tbody></table></div>
+    <div class="tablewrap"><table id="edge-table"><thead><tr><th>From</th><th>Role</th><th>To</th><th>Sites</th></tr></thead><tbody></tbody></table></div>
     <h2 id="type-heading">Types</h2>
     <div class="tablewrap" id="type-wrap"><table id="type-table"><thead><tr><th>Type</th><th>Kind</th><th>Defined</th><th>Used by</th><th>Constructed in</th><th>Matched in</th></tr></thead><tbody></tbody></table></div>
   </section>
@@ -247,6 +279,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
     calls: { name: "Call chain", legend: () => ["Arrow points from caller to callee ", sw("call"), ". Blue border: the functions in seed_fns. Calls through trait objects, channels and macro-registered handlers are not in the index."] },
     flow: { name: "Producers and consumers", legend: () => ["Function constructs the type or variant ", sw("make"), ". Type or variant is matched in the function ", sw("take"), ". Numbers count sites. Blue border: seed types."] },
     types: { name: "Type shapes", legend: () => ["Fields and variants as declared. An arrow means a field or variant mentions another type on this page."] },
+    classes: { name: "Classes by module", legend: () => ["Each box is a type inside the module that defines it; nested frames are submodules. Rows: fields or variants, then methods when enabled, one section per impl block, naming its trait and, when the impl is not beside the type, its module. Derived and macro-generated impls are left out. An arrow means a field or variant mentions another type on this page, labelled with the fields."] },
     modules: { name: "Module dependencies", legend: () => [
       "Arrow points from the module holding a reference to the module defining what it names ", sw("call"),
       ". Numbers count source lines. Red marks modules and edges inside a cycle ", sw("cycle"), ". ",
@@ -255,7 +288,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
   };
   const ROLE_TEXT = { calls: "calls", constructs: "constructs", matches: "matches", field: "field", cycle: "depends (cycle)", depends: "depends" };
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const state = { tab: null, sel: null, roles: new Set(), panes: {} };
+  const state = { tab: null, sel: null, roles: new Set(), panes: {}, full: false, fsApi: false, inspOpen: true };
 
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -287,6 +320,47 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       } catch (e) { toast(full); }
     } }, site);
   }
+  // A count that expands into the clickable site list; data-sort keeps the column sortable by count.
+  function sitesCell(sites) {
+    if (!sites.length) return el("td", { class: "sitecell", "data-sort": "0" }, "–");
+    return el("td", { class: "sitecell", "data-sort": String(sites.length) },
+      el("details", {}, el("summary", {}, String(sites.length)), el("div", { class: "sites" }, sites.map(siteButton))));
+  }
+
+  // Click a header to sort by that column: ascending, descending, then back to the default order.
+  // A cell's data-sort overrides its text; columns that are all numbers sort numerically.
+  function sortable(table) {
+    const ths = [...table.tHead.rows[0].cells];
+    ths.forEach((th, col) => {
+      th.classList.add("sortable");
+      th.replaceChildren(el("button", { class: "sortbtn", type: "button", onclick: () => {
+        const cur = th.getAttribute("aria-sort");
+        const next = cur === "ascending" ? "descending" : cur === "descending" ? null : "ascending";
+        for (const h of ths) h.removeAttribute("aria-sort");
+        if (next) th.setAttribute("aria-sort", next);
+        table.dataset.sortCol = next ? String(col) : "";
+        table.dataset.sortDir = next || "";
+        applySort(table);
+      } }, th.textContent));
+    });
+  }
+  function applySort(table) {
+    const body = table.tBodies[0];
+    const rows = [...body.rows];
+    rows.forEach((r, i) => { if (r.dataset.i == null) r.dataset.i = String(i); });
+    const col = table.dataset.sortCol;
+    const dir = table.dataset.sortDir === "descending" ? -1 : 1;
+    const key = (r) => { const td = r.cells[col]; return td ? (td.dataset.sort ?? td.textContent.trim()) : ""; };
+    const byIndex = (a, b) => Number(a.dataset.i) - Number(b.dataset.i);
+    const cmp = !col ? byIndex : (a, b) => {
+      const x = key(a), y = key(b);
+      const nx = Number(x), ny = Number(y);
+      const c = x !== "" && y !== "" && !isNaN(nx) && !isNaN(ny) ? nx - ny : x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
+      return c * dir || byIndex(a, b);
+    };
+    body.append(...rows.sort(cmp));
+  }
+
   function nodeLink(id) {
     return el("button", { class: "link", type: "button", onclick: () => select(id, { reveal: true }) }, label(id));
   }
@@ -321,7 +395,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
   }
   for (const name of DATA.diagrams) {
     const tpl = document.getElementById("svg-" + name);
-    const pane = el("div", { class: "dg", id: "pane-" + name, role: "tabpanel", hidden: true }, el("span", { class: "hint" }, "Drag to pan · Ctrl or ⌘ + scroll to zoom · Esc clears"));
+    const pane = el("div", { class: "dg", id: "pane-" + name, role: "tabpanel", hidden: true }, el("span", { class: "hint" }, "Drag to pan · Ctrl or ⌘ + scroll to zoom · F full screen · Esc clears"));
     pane.prepend(tpl.content.cloneNode(true));
     panes.append(pane);
     tabs.append(el("button", { type: "button", role: "tab", id: "tab-" + name, "aria-selected": "false", "aria-controls": "pane-" + name, onclick: () => show(name) }, DIAGRAMS[name].name));
@@ -380,11 +454,21 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       vb = { x: cx - (cx - vb.x) * f, y: cy - (cy - vb.y) * f, w: vb.w * f, h: vb.h * f };
       apply();
     }
+    // In full screen the page cannot scroll, so a plain scroll (or two-finger swipe) pans instead.
     pane.addEventListener("wheel", (ev) => {
-      if (!(ev.ctrlKey || ev.metaKey)) return;
+      const zooming = ev.ctrlKey || ev.metaKey;
+      if (!zooming && !state.full) return;
       ev.preventDefault();
-      const p = toSvg(ev.clientX, ev.clientY);
-      zoom(Math.exp(ev.deltaY * 0.0018), p.x, p.y);
+      const px = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? pane.clientHeight : 1;
+      if (zooming) {
+        const p = toSvg(ev.clientX, ev.clientY);
+        zoom(Math.exp(ev.deltaY * px * 0.0018), p.x, p.y);
+        return;
+      }
+      const u = unitsPerPx();
+      vb.x += (ev.shiftKey && !ev.deltaX ? ev.deltaY : ev.deltaX) * px * u;
+      vb.y += (ev.shiftKey && !ev.deltaX ? 0 : ev.deltaY) * px * u;
+      apply();
     }, { passive: false });
     let drag = null;
     pane.addEventListener("pointerdown", (ev) => { if (ev.button !== 0) return; drag = { x: ev.clientX, y: ev.clientY, vx: vb.x, vy: vb.y, moved: false, id: ev.pointerId }; });
@@ -461,6 +545,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
   // Selection and inspector -----------------------------------------------------------------------
   function select(id, opts = {}) {
     state.sel = id;
+    if (id && state.full && !state.inspOpen) setInspector(true);
     if (id && opts.reveal) {
       const here = state.panes[state.tab] && state.panes[state.tab].pane.querySelector(`g.node[data-nid="${id}"]`);
       if (!here) {
@@ -473,6 +558,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
     if (id && opts.reveal && state.panes[state.tab]) {
       const z = state.panes[state.tab].zoom;
       if (!z.visible(id)) z.center(id);
+      if (state.full) return;
       const stage = document.getElementById("stage");
       const r = stage.getBoundingClientRect();
       if (r.top < 0 || r.top > innerHeight * 0.5) stage.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
@@ -494,7 +580,58 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       }
     }
   }
-  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && state.sel) select(null); });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      if (state.sel) select(null); else if (state.full) setFull(false);
+      return;
+    }
+    const typing = ev.target.closest && ev.target.closest("input, textarea, select, [contenteditable]");
+    if (ev.key.toLowerCase() === "f" && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && DATA.diagrams.length && !DATA.tooBig) {
+      ev.preventDefault();
+      setFull(!state.full);
+    }
+  });
+
+  // Full screen ------------------------------------------------------------------------------------
+  // The stage is pinned over the whole window (CSS), and the browser's own full screen is requested
+  // on top when allowed; an embedding iframe may refuse it, which leaves the window-sized view.
+  // The inspector moves into the diagram's frame so it floats over the drawing instead of beside it.
+  const work = document.querySelector(".work");
+  const viewport = document.getElementById("viewport");
+  const inspector = document.getElementById("inspector");
+  const fullBtn = document.getElementById("full");
+  const inspBtn = document.getElementById("insp-toggle");
+  function setInspector(open) {
+    state.inspOpen = open;
+    inspector.classList.toggle("closed", state.full && !open);
+    inspBtn.setAttribute("aria-pressed", String(open));
+  }
+  function setFull(on) {
+    if (on === state.full) return;
+    state.full = on;
+    work.classList.toggle("full", on);
+    document.documentElement.classList.toggle("full-open", on);
+    fullBtn.setAttribute("aria-pressed", String(on));
+    fullBtn.textContent = on ? "⤡ Exit full screen" : "⤢ Full screen";
+    fullBtn.title = on ? "Exit full screen (F or Esc)" : "Full screen (F)";
+    inspBtn.hidden = !on;
+    if (on) viewport.append(inspector); else work.append(inspector);
+    setInspector(on ? state.inspOpen : true);
+    const root = document.documentElement;
+    if (on && root.requestFullscreen && !document.fullscreenElement) {
+      state.fsApi = true;
+      root.requestFullscreen().catch(() => { state.fsApi = false; });
+    } else if (!on) {
+      state.fsApi = false;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+  }
+  fullBtn.addEventListener("click", () => setFull(!state.full));
+  inspBtn.addEventListener("click", () => setInspector(!state.inspOpen));
+  // The browser eats Esc to leave its own full screen; follow it out of the pinned view too.
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && state.fsApi) { state.fsApi = false; setFull(false); }
+  });
 
   function relGroup(title, items) {
     if (!items.length) return null;
@@ -512,6 +649,9 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
     return limit && all.length > limit ? `${all.slice(0, limit).join(", ")}, +${all.length - limit} more` : all.join(", ");
   }
   function namesSpan(e) { return el("span", { class: "names", title: namesText(e) }, namesText(e, 8)); }
+  // The close button only shows while the inspector floats in full screen (CSS).
+  const inspectorHead = () => el("div", { class: "head" }, el("span", { class: "eyebrow" }, "Inspector"),
+    el("button", { class: "close", type: "button", "aria-label": "Hide inspector", title: "Hide inspector", onclick: () => setInspector(false) }, "×"));
   function renderInspector() {
     const box = document.getElementById("inspector");
     const id = state.sel;
@@ -519,7 +659,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       const counts = {};
       for (const e of DATA.edges) counts[e.role] = (counts[e.role] || 0) + 1;
       box.replaceChildren(
-        el("div", { class: "eyebrow" }, "Inspector"),
+        inspectorHead(),
         el("h2", {}, "Select a node"),
         el("p", { class: "empty" }, "Click a box in the diagram, a name in the tables, or search with Find. The inspector lists every edge the index has for it, with each source site. Click a site to copy its path."),
         el("div", { class: "kv" }, el("span", { class: "k" }, "On this page"),
@@ -532,7 +672,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
     const out = (...rs) => by((e) => e.from === id && rs.includes(e.role)).map((e) => ({ id: e.to, e }));
     const inc = (...rs) => by((e) => e.to === id && rs.includes(e.role)).map((e) => ({ id: e.from, e }));
     box.replaceChildren(...[
-      el("div", { class: "eyebrow" }, "Inspector"),
+      inspectorHead(),
       el("h2", {}, n.label),
       el("div", { class: "chips" }, el("span", { class: "chip" }, n.kind), el("span", { class: "chip" }, n.crate), n.seed ? el("span", { class: "chip seed" }, "seed") : null, n.cycle != null ? el("span", { class: "chip cycle" }, "cycle " + (n.cycle + 1)) : null),
       el("div", { class: "kv" }, el("span", { class: "k" }, "Path"), el("span", { class: "v mono" }, n.path)),
@@ -576,9 +716,9 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       el("td", {}, nodeLink(e.from)),
       el("td", {}, el("span", { class: "chip " + e.role }, e.role === "field" ? "field · " + e.via : ROLE_TEXT[e.role]), e.names ? el("div", {}, namesSpan(e)) : null),
       el("td", {}, nodeLink(e.to)),
-      el("td", { class: "num" }, e.sites.length || "–"),
-      el("td", {}, e.sites.length ? siteButton(e.sites[0]) : "–"),
+      sitesCell(e.sites),
     )));
+    applySort(document.getElementById("edge-table"));
     document.getElementById("edge-count").textContent = `${rows.length} of ${DATA.edges.length}`;
   }
   function renderTypes() {
@@ -596,6 +736,7 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       el("td", {}, ...list(id, "constructs")),
       el("td", {}, ...list(id, "matches")),
     )));
+    applySort(document.getElementById("type-table"));
   }
 
   // Each cycle with the edges inside it, fewest sites first, then the mutual pairs.
@@ -607,14 +748,16 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
       const inside = new Set(comp);
       const inner = DATA.edges.filter((e) => e.d === "modules" && inside.has(e.from) && inside.has(e.to))
         .sort((a, b) => a.sites.length - b.sites.length || label(a.from).localeCompare(label(b.from)) || label(a.to).localeCompare(label(b.to)));
+      const table = el("table", {},
+        el("thead", {}, el("tr", {}, el("th", {}, "From"), el("th", {}, "To"), el("th", {}, "Sites"), el("th", {}, "Names"))),
+        el("tbody", {}, inner.map((e) => el("tr", {},
+          el("td", {}, nodeLink(e.from)), el("td", {}, nodeLink(e.to)), sitesCell(e.sites),
+          el("td", { class: "wrap" }, namesSpan(e))))));
+      sortable(table);
       list.append(
         el("h3", {}, `Cycle ${i + 1} · ${comp.length} modules`),
         el("div", { class: "members" }, comp.map(nodeLink)),
-        el("div", { class: "tablewrap" }, el("table", {},
-          el("thead", {}, el("tr", {}, el("th", {}, "From"), el("th", {}, "To"), el("th", {}, "Sites"), el("th", {}, "Names"), el("th", {}, "First site"))),
-          el("tbody", {}, inner.map((e) => el("tr", {},
-            el("td", {}, nodeLink(e.from)), el("td", {}, nodeLink(e.to)), el("td", { class: "num" }, e.sites.length),
-            el("td", { class: "wrap" }, namesSpan(e)), el("td", {}, siteButton(e.sites[0]))))))),
+        el("div", { class: "tablewrap" }, table),
       );
     });
     if (DATA.mutual && DATA.mutual.length) {
@@ -627,6 +770,8 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var
   // Boot ---------------------------------------------------------------------------------------
   const notesBody = document.getElementById("notes-body");
   if (notesBody.textContent.trim()) document.getElementById("notes").hidden = false;
+  sortable(document.getElementById("edge-table"));
+  sortable(document.getElementById("type-table"));
   renderEdges();
   renderTypes();
   renderCycles();

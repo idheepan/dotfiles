@@ -6,13 +6,14 @@
 #   codemap wait   [opts] [--timeout S]                      (block until the running index finishes; exit 4 = still running)
 #   codemap rebuild [--repo DIR] [--rev REV] [--ws DIR]   (roles + graph only; queries do this by themselves when stale)
 #   codemap status [--repo DIR] [--rev REV] [--ws DIR]       (exit 0 indexed, 3 not indexed, 4 indexing)
-#   codemap find   [opts] REGEX [--kinds Struct,Enum,...]
-#   codemap refs   [opts] REGEX
+#   codemap find   [opts] REGEX [--kinds Struct,Enum,...] [--crates C,C] [--exclude REGEX]
+#   codemap refs   [opts] REGEX [--crates C,C] [--exclude REGEX]   (scope applies to the referring fn)
+#   codemap dir    SLUG                                      (create the output folder, print its path)
 #   codemap render [opts] SLUG|FILTER.json [OUT_DIR] [--artifact]   (writes OUT_DIR/index.html)
 #   codemap seeds  [opts] SLUG|FILTER.json                   (dry run of seed_types/seed_fns: what matches, why not; writes nothing)
 #   codemap page   SLUG|OUT_DIR [--artifact]                 (re-assemble after editing notes.html)
 #   codemap shot   SLUG|OUT_DIR [PNG]                        (screenshot of index.html, default OUT_DIR/screenshot.png)
-#   codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles]   (read graph.json; no ad-hoc Python)
+#   codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles|by-module]   (read graph.json; no ad-hoc Python)
 #   codemap lint                                             (ASCII-only files, page.html markers, syntax; run after editing the skill)
 #   codemap help
 #   codemap crates [opts] [REGEX]
@@ -20,8 +21,9 @@
 #   codemap verify [opts] DOC
 #   codemap cache
 #
-# SLUG means $CODEMAP_OUT/SLUG (default tmp-docs/07-generated/codemap/SLUG, relative to $PWD); OUT_DIR
-# defaults to the filter's folder. find/refs take --limit N; refs takes --by-fn.
+# SLUG means $CODEMAP_OUT/SLUG (default: docs/08-generated/codemap/SLUG in the nearest ancestor of $PWD
+# with docs/08-generated); OUT_DIR defaults to the filter's folder. find/refs take --limit N (default
+# 60/25) and drop test modules unless --exclude says otherwise; refs takes --by-fn.
 # Defaults: --repo = the git repo containing $PWD, --rev = HEAD, --ws = host, --shell = --ws.
 # With the default --rev HEAD and uncommitted changes, the index is of the WORKING TREE (a snapshot of
 # tracked edits plus untracked files, so untracked crates resolve); --committed indexes HEAD alone.
@@ -36,39 +38,28 @@ SCIP_RUST=${CODEMAP_SCIP_RUST:-github:scip-code/scip-rust/5e108f58d28fc1b4023399
 
 die() { echo "codemap: $*" >&2; exit 1; }
 
-OUT_BASE=${CODEMAP_OUT:-tmp-docs/07-generated/codemap}
-# Output moved from tmp-docs/codemap/<slug> to tmp-docs/07-generated/codemap/<slug> (2026-11).
-LEGACY_BASE=tmp-docs/codemap
-# Resolve a SLUG or path to an existing folder. Tries, in order: the argument as given; a bare slug
-# under $OUT_BASE; the legacy base (as a slug, or as a path prefix remapped to the new base); each of
-# those again from each ancestor of $PWD, so it works from a subdirectory. Falls back to the canonical
-# new location (so `render` can create it). Prints a note on stderr when a legacy path was used.
-slug_dir() {
-    local arg=${1%/} rel="" cand dir cands=()
-    cands+=("$arg")
-    if [[ "$arg" == "$LEGACY_BASE"/* ]]; then rel=${arg#"$LEGACY_BASE"/}; cands+=("$OUT_BASE/$rel")
-    elif [[ "$arg" != */* ]]; then rel=$arg; cands+=("$OUT_BASE/$arg" "$LEGACY_BASE/$arg"); fi
-    # Walk up from $PWD so a run from a subdirectory still finds the folder (relative bases only).
-    if [[ "$OUT_BASE" != /* ]]; then
-        dir=$(dirname "$PWD")
-        while [ "$dir" != / ]; do
-            cands+=("$dir/$arg")
-            [ -n "$rel" ] && cands+=("$dir/$OUT_BASE/$rel" "$dir/$LEGACY_BASE/$rel")
-            dir=$(dirname "$dir")
-        done
-    fi
-    for cand in "${cands[@]}"; do
-        if [ -e "$cand" ]; then
-            [[ "$cand" == *"/$LEGACY_BASE/"* || "$cand" == "$LEGACY_BASE"/* ]] \
-                && echo "codemap: note: using legacy folder $cand; move it to $OUT_BASE/" >&2
-            echo "$cand"; return
-        fi
+# Output base: docs/08-generated/codemap in the nearest ancestor of $PWD that has docs/08-generated,
+# so a run from inside a repo (cwd device-sw/) still lands in the shared docs folder; else under $PWD.
+# (Until 2026-11 it was tmp-docs/07-generated/codemap, relative to $PWD; that tree no longer exists.)
+default_out_base() {
+    local dir=$PWD
+    while :; do
+        [ -d "$dir/docs/08-generated" ] && { echo "$dir/docs/08-generated/codemap"; return; }
+        [ "$dir" = / ] && break
+        dir=$(dirname "$dir")
     done
-    if [ -n "$rel" ]; then echo "$OUT_BASE/$rel"; else echo "$arg"; fi
+    echo "$PWD/docs/08-generated/codemap"
+}
+OUT_BASE=${CODEMAP_OUT:-$(default_out_base)}
+# A bare SLUG (no slash) is always $OUT_BASE/SLUG, even when a folder of that name exists in $PWD
+# (a crate folder such as `mock-edge-server` would otherwise win). Anything with a slash is a path.
+slug_dir() {
+    local arg=${1%/}
+    if [[ "$arg" == */* ]]; then echo "$arg"; else echo "$OUT_BASE/$arg"; fi
 }
 
 [ "${1:-}" = --help ] && set -- help
-cmd=${1:-}; [ -n "$cmd" ] || die "usage: codemap <index|rebuild|status|find|refs|render|seeds|page|graph|lint|shot|crates|modules|verify|cache|help> ..."; shift
+cmd=${1:-}; [ -n "$cmd" ] || die "usage: codemap <index|rebuild|status|find|refs|render|seeds|dir|page|graph|lint|shot|crates|modules|verify|cache|help> ..."; shift
 repo=$PWD rev=HEAD ws=host shell="" committed=0 timeout=100 fg=0 rest=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -347,8 +338,8 @@ render)
     resolve; ensure_index; python_env
     [ ${#rest[@]} -ge 1 ] || die "usage: codemap render SLUG|FILTER.json [OUT_DIR] [--artifact]"
     flt=${rest[0]}
-    [ -f "$flt" ] || flt=$(slug_dir "$flt")/filter.json
-    [ -f "$flt" ] || die "no filter at $flt"
+    [[ "$flt" == *.json && -f "$flt" ]] || flt=$(slug_dir "$flt")/filter.json
+    [ -f "$flt" ] || die "no filter at $flt (codemap dir SLUG creates and prints the folder)"
     if [ ${#rest[@]} -ge 2 ] && [[ "${rest[1]}" != --* ]]; then out=${rest[1]}; extra=("${rest[@]:2}")
     else out=$(dirname "$flt"); extra=("${rest[@]:1}"); fi
     "$PY" -I "$SKILL_DIR/codemap.py" render "$INDEX" "$flt" "$out"
@@ -360,9 +351,14 @@ seeds)
     resolve; ensure_index; python_env
     [ ${#rest[@]} -ge 1 ] || die "usage: codemap seeds SLUG|FILTER.json"
     flt=${rest[0]}
-    [ -f "$flt" ] || flt=$(slug_dir "$flt")/filter.json
-    [ -f "$flt" ] || die "no filter at $flt"
+    [[ "$flt" == *.json && -f "$flt" ]] || flt=$(slug_dir "$flt")/filter.json
+    [ -f "$flt" ] || die "no filter at $flt (codemap dir SLUG creates and prints the folder)"
     "$PY" -I "$SKILL_DIR/codemap.py" seeds "$INDEX" "$flt"
+    ;;
+dir)
+    # Create a slug's output folder and print its absolute path; write filter.json there.
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap dir SLUG"
+    d=$(slug_dir "${rest[0]}"); mkdir -p "$d"; (cd "$d" && pwd)
     ;;
 page)
     # Re-assemble the HTML after editing notes.html; no index needed.
@@ -371,7 +367,7 @@ page)
     "$PY" -I "$SKILL_DIR/codemap.py" page "$(slug_dir "${rest[0]}")" "${rest[@]:1}"
     ;;
 graph)
-    [ ${#rest[@]} -ge 1 ] || die "usage: codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles]"
+    [ ${#rest[@]} -ge 1 ] || die "usage: codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles|by-module]"
     python_env
     "$PY" -I "$SKILL_DIR/codemap.py" graph "$(slug_dir "${rest[0]}")" "${rest[@]:1}"
     ;;

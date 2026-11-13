@@ -21,6 +21,7 @@ Top-level keys: `meta`, `diagrams` (list of names), `tooBig` (null or counts), `
 
 - `nodes`: dict, node id -> `{label, path, crate, kind, def, sig, seed[, members, usedBy]}`.
   Iterating it yields id strings; use `.items()`.
-- `edges`: list of `{d (calls|flow|types|modules), from, to, role, sites[], m[, via, names]}`;
-  `from`/`to` are node ids.
+- `edges`: list of `{d (calls|flow|types|classes|modules), from, to, role, sites[], m[, via, names]}`;
+  `from`/`to` are node ids. Field edges (`types`, `classes`) carry the member lines that name the
+  target; only fallback edges from generated types without a source span have empty `sites`.
 - `cycles`: list of lists of node ids. `mutual`: list of `[id, id]` pairs.

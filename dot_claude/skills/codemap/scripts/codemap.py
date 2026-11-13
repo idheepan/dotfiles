@@ -21,7 +21,8 @@ FN_KINDS = {"Function", "Method", "StaticMethod", "TraitMethod"}
 # Modules are spans too, so a reference outside any item (a `use`, a const type) still has a container.
 SPAN_KINDS = TYPE_KINDS | FN_KINDS | {"Impl", "Macro", "Constant", "StaticVariable", "Module"}
 MEMBER_KINDS = {"Field", "EnumMember"}
-DEFAULT_EXCLUDE = r"(^|::)tests?(::|$)"
+# Test code by module name: `tests`, `foo_tests`, `test_support`, `test_utils`, `testing`.
+DEFAULT_EXCLUDE = r"(^|::)(tests?|\w+_tests?|test_(support|utils?|helpers?)|testing)(::|$)"
 # Bumped when build() output changes meaning; older graph.pkl files need `codemap rebuild`.
 GRAPH_VERSION = 2
 # Placeholders page() fills in page.html; each must appear exactly once.
@@ -95,7 +96,8 @@ def esc(s):
 
 ALL_KINDS = TYPE_KINDS | FN_KINDS | MEMBER_KINDS | {"Impl", "Macro", "Constant", "StaticVariable", "Module"}
 FILTER_KEYS = {"title", "question", "seed_types", "seed_fns", "callers", "callees", "crates", "exclude", "roles",
-               "max_nodes", "max_members", "modules"}
+               "max_nodes", "max_members", "modules", "classes"}
+CLASSES_KEYS = {"methods"}
 ROLE_NAMES = {"constructs", "matches", "uses"}
 
 
@@ -245,6 +247,18 @@ def validate_filter(flt):
         die(f"unknown role(s) {', '.join(bad)}. Valid: {', '.join(sorted(ROLE_NAMES))}")
     if flt.get("exclude"):
         compile_rx("exclude", flt["exclude"])
+    cls = flt.get("classes")
+    if cls is not None:
+        if not isinstance(cls, (bool, dict)):
+            die(f"classes must be true, false or an object, got {cls!r}")
+        if isinstance(cls, dict):
+            bad = sorted(set(cls) - CLASSES_KEYS)
+            if bad:
+                die(f"unknown classes option(s) {', '.join(bad)}. Valid: {', '.join(sorted(CLASSES_KEYS))}")
+            if "methods" in cls and not isinstance(cls["methods"], bool):
+                die(f"classes.methods must be true or false, got {cls['methods']!r}")
+        if cls is not False and not flt.get("seed_types"):
+            die("classes draws the seed_types; give seed_types too")
     if not (flt.get("seed_types") or flt.get("seed_fns") or flt.get("modules") not in (None, False)):
         die("filter selects nothing: give at least one of seed_types, seed_fns, modules")
 
@@ -441,6 +455,25 @@ def opt_value(args, name, default=None):
     return args[i + 1]
 
 
+def positional(args, valued):
+    """The first argument after the index dir that is neither an option nor an option's value."""
+    it = iter(args[1:])
+    for a in it:
+        if a in valued:
+            next(it, None)
+        elif not a.startswith("--"):
+            return a
+    return None
+
+
+def cli_scope(g, args):
+    """(crate set, exclude regex) from --crates/--exclude, as a filter's `crates`/`exclude` would.
+    Without --crates every crate is searched, and test modules are always dropped by default."""
+    crates = opt_value(args, "--crates")
+    crate_set = set(resolve_crates(g, crates.split(","))) if crates else set()
+    return crate_set, compile_rx("exclude", opt_value(args, "--exclude", DEFAULT_EXCLUDE))
+
+
 def load_filter(path):
     try:
         return json.load(open(path))
@@ -459,29 +492,36 @@ def load(index_dir):
 
 # Queries -----------------------------------------------------------------------------------------
 
-def find(g, rx, kinds, limit=60):
+def find(g, rx, kinds, limit=60, crate_set=frozenset(), exclude=None):
     check_kinds(kinds)
     r = compile_rx("find", rx)
-    rows = []
+    rows, dropped = [], 0
     for sym, i in g["info"].items():
         if i["kind"] not in kinds:
             continue
         p = path_of(sym)
         if hits(r, p):
+            if (crate_set and crate_of(sym) not in crate_set) or (exclude and exclude.search(p)):
+                dropped += 1
+                continue
             d = g["defs"].get(sym)
             rows.append((crate_of(sym), p, i["kind"], f"{d['file']}:{d['line']}" if d else "external", i["sig"].splitlines()[0][:100] if i["sig"] else ""))
     for c, p, k, loc, sig in sorted(rows)[:limit]:
         print(f"{k:13} {c}::{p}  {loc}  {sig}")
-    print(f"-- {len(rows)} matches" + (f", first {limit} shown (--limit N, or narrow the regex)" if len(rows) > limit else ""))
-    if not rows:
+    print(f"-- {len(rows)} matches" + (f", first {limit} shown (--limit N, or narrow the regex)" if len(rows) > limit else "")
+          + (f"; {dropped} more outside --crates or dropped by --exclude (default: test modules)" if dropped else ""))
+    if not rows and not dropped:
         print("\n".join(why_no_match(g, rx, kinds, "-- ")))
 
 
-def refs(g, rx, limit=25, by_fn=False):
+def refs(g, rx, limit=25, by_fn=False, crate_set=frozenset(), exclude=None):
     r = compile_rx("refs", rx)
     by = collections.defaultdict(list)
     for container, target, f, line, role in g["edges"]:
         if hits(r, path_of(target)):
+            # The scope applies to the referring side: who uses this, from which crate, not in tests.
+            if container and ((crate_set and crate_of(container) not in crate_set) or (exclude and exclude.search(path_of(container)))):
+                continue
             by[target].append((container, f, line, role))
     if not by:
         print(f"-- no references to a symbol matching /{rx}/")
@@ -676,6 +716,12 @@ def render(g, flt, out_dir, meta):
     max_nodes = flt.get("max_nodes", 30)
     max_members = flt.get("max_members", 12)
     roles_wanted = set(flt.get("roles") or ["constructs", "matches"])
+    # `classes` swaps the mermaid type and flow views for one Graphviz class diagram nested by
+    # module. It is meant for whole crates, so max_nodes does not apply to it.
+    classes = flt.get("classes") not in (None, False)
+    copt = flt["classes"] if isinstance(flt.get("classes"), dict) else {}
+    if classes:
+        roles_wanted = set()
 
     def in_scope(sym):
         return (not crate_set or crate_of(sym) in crate_set) and not exclude.search(path_of(sym))
@@ -706,13 +752,37 @@ def render(g, flt, out_dir, meta):
         if i["kind"] in MEMBER_KINDS and parent_of(s) in seed_set:
             members[parent_of(s)].append(s)
 
-    # Type -> type edges from member signatures; works for proto types that have no source span.
+    # Type -> type edges (shared by the types and classes views). A member with a source span takes
+    # its arrows from the index's references: a reference counts when it sits on the member's lines
+    # and the member's signature names the target, which drops doc links between fields. Matching
+    # names instead links every namesake (two `RunConfig`s, a variant called `Empty`). Members
+    # without a span (generated proto types) fall back to the names in their signature.
+    # type_sites keeps the reference lines behind each (container, target, member) edge so the page
+    # can list them; fallback edges have no source span and stay without sites.
+    type_edges = set()
+    type_sites = collections.defaultdict(set)
+    spans = {}
+    for s in seeds:
+        ms = sorted((defs[m]["line"], m) for m in members[s] if m in defs)
+        spans[s] = [(line, ms[k + 1][0] if k + 1 < len(ms) else line + 50, m) for k, (line, m) in enumerate(ms)]
+    for container, target, f, line, _role in g["edges"]:
+        if container not in seed_set:
+            continue
+        t = parent_of(target) if info.get(target, {}).get("kind") == "EnumMember" else target
+        if t not in seed_set or t == container:
+            continue
+        for lo, hi, m in spans[container]:
+            if lo <= line < hi and name_of(t) in re.findall(r"[A-Za-z0-9_]+", info[m]["sig"]):
+                type_edges.add((container, t, name_of(m)))
+                type_sites[(container, t, name_of(m))].add((f, line))
+                break
     by_name = collections.defaultdict(list)
     for s in seeds:
         by_name[name_of(s)].append(s)
-    type_edges = set()
     for s in seeds:
         for m in members[s]:
+            if m in defs:
+                continue
             for word in set(re.findall(r"[A-Z][A-Za-z0-9_]*", info[m]["sig"])):
                 for t in by_name.get(word, []):
                     if t != s and (len(by_name[word]) == 1 or crate_of(t) == crate_of(s)):
@@ -783,6 +853,114 @@ def render(g, flt, out_dir, meta):
         td.append("  }")
     for a, b, via in sorted(type_edges):
         td.append(f"  {nid(a)} --> {nid(b)} : {via}")
+
+    # Class diagram: one box per seed type (kind, name, fields or variants, optionally methods),
+    # inside nested Graphviz clusters crate -> module -> submodule, so where a type lives reads
+    # off the picture. Arrows are the same field-mentions-type edges as `types`, one per pair.
+    cl, class_pairs = [], {}
+    if classes:
+        methods = collections.defaultdict(list)
+        if copt.get("methods"):
+            # Impl methods are `impl#[Type][Trait]name().` under the module holding the impl, which
+            # need not be the type's module, so match on the impl's self type: by path when the
+            # impl sits beside the type, else by name when that name is unique in the crate.
+            by_path = {(crate_of(s), path_of(s)): s for s in seeds}
+            by_type_name = collections.defaultdict(list)
+            for s in seeds:
+                by_type_name[(crate_of(s), name_of(s))].append(s)
+            for s, i in info.items():
+                crate, path, _trait, self_type = parse(s)
+                # No definition site means derive- or macro-generated (`eq` from PartialEq).
+                if i["kind"] not in FN_KINDS or not self_type or not in_scope(s) or s not in defs:
+                    continue
+                owner = by_path.get((crate, path.rsplit("::", 1)[0]))
+                named = by_type_name.get((crate, self_type.split("::")[-1]), [])
+                if not owner and len(named) == 1:
+                    owner = named[0]
+                if owner:
+                    methods[owner].append(s)
+
+        def html(s):
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+        def tidy(sig):
+            # rust-analyzer prints the default allocator; it is noise in every Vec and map.
+            sig = re.sub(r",\s*Global>", ">", sig)
+            return sig if len(sig) <= 90 else sig[:87] + "..."
+
+        def rows(syms, sig):
+            ms = sorted(syms, key=lambda m: defs.get(m, {}).get("line", 0))
+            out = [f'<TR><TD ALIGN="LEFT">{html(tidy(sig(m)))}</TD></TR>' for m in ms[:max_members]]
+            if len(ms) > max_members:
+                out.append(f'<TR><TD ALIGN="LEFT"><I>... {len(ms) - max_members} more</I></TD></TR>')
+            return out
+
+        def fn_sig(m):
+            return re.sub(r"^(const\s+|async\s+|unsafe\s+)*fn\s+", "", member_sig(m))
+
+        kind_colour = {"Struct": "#1565c0", "Enum": "#2e7d32", "Trait": "#6a1b9a", "TypeAlias": "#ef6c00", "Union": "#795548"}
+
+        def box(s):
+            kind = info[s]["kind"]
+            parts = [
+                '<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" STYLE="rounded">',
+                f'<TR><TD><FONT POINT-SIZE="9" COLOR="{kind_colour.get(kind, "#555555")}">&lt;&lt;{kind}&gt;&gt;</FONT></TD></TR>',
+                f"<TR><TD><B>{html(name_of(s))}</B></TD></TR>",
+            ]
+            body = rows(members[s], member_sig)
+            if body:
+                parts += ["<HR/>"] + body
+            # One section per impl block group: (module holding the impl, trait). A header row
+            # names the trait and, when the impl is not beside the type, the module it is in.
+            home = module_of(s)[1]
+            impls = collections.defaultdict(list)
+            for m in methods[s]:
+                impls[(module_of(m)[1], parse(m)[2] or "")].append(m)
+            for (where, trait) in sorted(impls, key=lambda k: (k[0] != home, k[1] != "", k)):
+                head = ("impl " + trait if trait else "impl") + ("" if where == home else f" in {where or 'crate root'}")
+                parts += ["<HR/>", f'<TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#607d8b"><I>{html(head)}</I></FONT></TD></TR>']
+                parts += rows(impls[(where, trait)], fn_sig)
+            parts.append("</TABLE>")
+            return "<" + "".join(parts) + ">"
+
+        # Module tree: key = (crate, segments...), types listed under the module that defines them.
+        placed = collections.defaultdict(list)
+        children = collections.defaultdict(set)
+        for s in seeds:
+            crate, mod = module_of(s)
+            key = (crate, *(mod.split("::") if mod else []))
+            placed[key].append(s)
+            for i in range(1, len(key)):
+                children[key[:i]].add(key[: i + 1])
+
+        cl = [
+            "digraph classes {",
+            '  graph [rankdir=TB, newrank=true, bgcolor="transparent", fontname="Arial", fontsize=12, nodesep=0.25, ranksep=0.7, pad=0.3]',
+            '  node [shape=plain, fontname="Arial", fontsize=11]',
+            '  edge [fontname="Arial", fontsize=9, arrowsize=0.6, color="#78909c", fontcolor="#546e7a"]',
+        ]
+
+        def cluster(key, depth):
+            pad = "  " * (depth + 1)
+            label = key[0] if len(key) == 1 else "::".join(key[1:])
+            cid = "cluster_" + re.sub(r"[^A-Za-z0-9_]", "_", "__".join(key))
+            cl.append(f'{pad}subgraph "{cid}" {{')
+            cl.append(f"{pad}  label={dot_str(label)}; labeljust=l; style=rounded; color=\"#90a4ae\"; fontsize={max(16 - 2 * depth, 11)}; penwidth={max(2.0 - 0.5 * depth, 1.0)}")
+            for s in sorted(placed[key], key=path_of):
+                cl.append(f'{pad}  {nid(s)} [id="{nid(s)}", label={box(s)}]')
+            for child in sorted(children[key]):
+                cluster(child, depth + 1)
+            cl.append(f"{pad}}}")
+
+        for root in sorted({k[:1] for k in placed} | {k[:1] for k in children}):
+            cluster(root, 0)
+        # One arrow per type pair, labelled with every member that makes it.
+        for a, b, via in type_edges:
+            class_pairs.setdefault((a, b), set()).add(via)
+        for (a, b), vias in sorted(class_pairs.items(), key=lambda kv: (nid(kv[0][0]), nid(kv[0][1]))):
+            text = ", ".join(sorted(vias))
+            cl.append(f'  {nid(a)} -> {nid(b)} [id="L_{nid(a)}_{nid(b)}_0", label={dot_str(text if len(text) <= 40 else text[:37] + "...")}]')
+        cl.append("}")
 
     def flowchart(direction, nodes, edges, is_seed):
         lines = [f"flowchart {direction}"]
@@ -861,11 +1039,16 @@ def render(g, flt, out_dir, meta):
             mod_nodes[mid[k]] = n
 
     n_mods = len(mods["nodes"]) if mods else 0
-    too_big = len(flow_nodes) > max_nodes or len(seeds) > max_nodes or len(call_nodes) > max_nodes or n_mods > max_nodes
-    for name in ("calls", "flow", "types", "modules"):
+    too_big = len(flow_nodes) > max_nodes or (len(seeds) > max_nodes and not classes) or len(call_nodes) > max_nodes or n_mods > max_nodes
+    for name in ("calls", "flow", "types", "modules", "classes"):
         for ext in (".mmd", ".dot", ".svg"):
             (out / f"{name}{ext}").unlink(missing_ok=True)
+    # A screenshot of the previous render would otherwise pass for this one.
+    (out / "screenshot.png").unlink(missing_ok=True)
     diagrams = []
+    if classes and seeds:
+        (out / "classes.dot").write_text("\n".join(cl) + "\n")
+        diagrams.append("classes")
     if not too_big:
         if call_nodes:
             (out / "calls.mmd").write_text("\n".join(cc) + "\n")
@@ -873,7 +1056,7 @@ def render(g, flt, out_dir, meta):
         if flow:
             (out / "flow.mmd").write_text("\n".join(fc) + "\n")
             diagrams.append("flow")
-        if seeds:
+        if seeds and not classes:
             (out / "types.mmd").write_text("\n".join(td) + "\n")
             diagrams.append("types")
         if mods:
@@ -889,6 +1072,7 @@ def render(g, flt, out_dir, meta):
             "label": tlabel.get(sym) or labels.get(sym) or name_of(sym),
             "path": f"{crate_of(sym)}::{path_of(sym)}",
             "crate": crate_of(sym),
+            "module": module_of(sym)[1],
             "kind": i.get("kind", "?"),
             "def": f"{d['file']}:{d['line']}" if d else None,
             "sig": "\n".join(i.get("sig", "").splitlines()[:8]),
@@ -904,7 +1088,15 @@ def render(g, flt, out_dir, meta):
         {"d": "flow", "from": nid(fn), "to": nid(t), "role": role, "sites": ev, "m": [nid(fn), nid(t)] if role == "constructs" else [nid(t), nid(fn)]}
         for (fn, t, role), ev in flow.items()
     ]
-    edges += [{"d": "types", "from": nid(a), "to": nid(b), "role": "field", "via": via, "sites": [], "m": [nid(a), nid(b)]} for a, b, via in type_edges]
+    def field_sites(a, b, vias):
+        return [f"{f}:{line}" for f, line in sorted(set().union(*(type_sites[(a, b, v)] for v in vias)))]
+
+    if classes:
+        edges += [{"d": "classes", "from": nid(a), "to": nid(b), "role": "field", "via": ", ".join(sorted(v)), "sites": field_sites(a, b, v), "m": [nid(a), nid(b)]}
+                  for (a, b), v in class_pairs.items()]
+    else:
+        edges += [{"d": "types", "from": nid(a), "to": nid(b), "role": "field", "via": via, "sites": field_sites(a, b, [via]), "m": [nid(a), nid(b)]}
+                  for a, b, via in type_edges]
     if mods:
         for (a, b), e in mods["edges"].items():
             same = a in in_cycle and in_cycle.get(b) == in_cycle[a]
@@ -940,6 +1132,10 @@ def render(g, flt, out_dir, meta):
             print(f"cycle {i}: " + ", ".join(module_label(k) for k in comp))
         for a, b in mods["mutual"]:
             print(f"mutual: {module_label(a)} <-> {module_label(b)}")
+        # 37 modules / 179 edges was unreadable at fit-to-width; 13 / 28 at depth 1 read cleanly.
+        if n_mods > 20 and mopt.get("depth") is None:
+            print(f"dense: {n_mods} modules, {len(mods['edges'])} edges unfolded. Render a second filter with "
+                  "\"depth\": 1 as the overview and keep this one as the detail view.")
     hubs = collections.Counter()
     for (fn, t, _r), ev in flow.items():
         hubs[t] += len(ev)
@@ -1024,8 +1220,31 @@ def graph_cmd(out_dir, args):
             print("cycle: " + ", ".join(label(i) for i in c))
         for a, b in d["mutual"]:
             print(f"mutual: {label(a)} <-> {label(b)}")
+    elif sub == "by-module":
+        # For the types/classes views: where the seed types live, and which modules' fields reach
+        # into which others. Notes on a class map need exactly these counts.
+        def mod(i):
+            n = nodes[i]
+            return n.get("module", "::".join(n["path"].split("::")[1:-1])) or "(crate root)"
+        per = collections.defaultdict(collections.Counter)
+        for i, n in nodes.items():
+            if n["seed"] and n["kind"] in TYPE_KINDS:
+                per[mod(i)][n["kind"]] += 1
+        total = collections.Counter()
+        for c in per.values():
+            total.update(c)
+        print("types: " + ", ".join(f"{k} {v}" for k, v in sorted(total.items())) + f" in {len(per)} modules")
+        for m in sorted(per):
+            print(f"  {m:48} " + ", ".join(f"{k} {v}" for k, v in sorted(per[m].items())))
+        cross = collections.defaultdict(list)
+        for e in edges:
+            if e["d"] in ("types", "classes") and e["from"] in nodes and e["to"] in nodes and mod(e["from"]) != mod(e["to"]):
+                cross[(mod(e["from"]), mod(e["to"]))].append(f"{label(e['from'])} -> {label(e['to'])}")
+        print("cross-module field links:")
+        for (a, b), es in sorted(cross.items()):
+            print(f"  {a} -> {b}: {len(es)}  ({'; '.join(es[:4])}{'; ...' if len(es) > 4 else ''})")
     else:
-        sys.exit("usage: codemap graph SLUG [summary|nodes [REGEX]|edges [REGEX]|cycles]")
+        sys.exit("usage: codemap graph SLUG [summary|nodes [REGEX]|edges [REGEX]|cycles|by-module]")
 
 
 # Lint the skill itself ------------------------------------------------------------------------------
@@ -1084,16 +1303,20 @@ if __name__ == "__main__":
     if cmd == "build":
         build(*args[:3])
     elif cmd == "find":
-        if len(args) < 2:
-            die("usage: codemap find REGEX [--kinds K,K] [--limit N]")
+        rx = positional(args, ("--kinds", "--limit", "--crates", "--exclude"))
+        if rx is None:
+            die("usage: codemap find REGEX [--kinds K,K] [--crates C,C] [--exclude REGEX] [--limit N]")
         kinds = TYPE_KINDS | FN_KINDS | MEMBER_KINDS
         if "--kinds" in args:
             kinds = set(opt_value(args, "--kinds").split(","))
-        find(load(args[0]), args[1], kinds, int(opt_value(args, "--limit", 60)))
+        g = load(args[0])
+        find(g, rx, kinds, int(opt_value(args, "--limit", 60)), *cli_scope(g, args))
     elif cmd == "refs":
-        if len(args) < 2:
-            die("usage: codemap refs REGEX [--limit N] [--by-fn]")
-        refs(load(args[0]), args[1], int(opt_value(args, "--limit", 25)), "--by-fn" in args)
+        rx = positional(args, ("--limit", "--crates", "--exclude"))
+        if rx is None:
+            die("usage: codemap refs REGEX [--crates C,C] [--exclude REGEX] [--limit N] [--by-fn]")
+        g = load(args[0])
+        refs(g, rx, int(opt_value(args, "--limit", 25)), "--by-fn" in args, *cli_scope(g, args))
     elif cmd == "render":
         meta = json.load(open(Path(args[0]) / "meta.json"))
         render(load(args[0]), load_filter(args[1]), args[2], meta)
