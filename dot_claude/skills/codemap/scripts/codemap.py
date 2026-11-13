@@ -8,7 +8,8 @@ Every node and edge this script emits comes from the index or the ast-grep role 
   codemap.py refs   <index_dir> <regex>
   codemap.py render <index_dir> <filter.json> <out_dir>
   codemap.py seeds  <index_dir> <filter.json>
-  codemap.py page   <out_dir> [--artifact]
+  codemap.py page   <out_dir> [--artifact]      (also finishes the SVGs: palette, classes, badges)
+  codemap.py mermaid-config                   (mermaid.json merged with palette themeVariables)
   codemap.py crates <index_dir> [regex]
   codemap.py modules <index_dir> <crate>... [--depth N] [--externals REGEX] [--exclude REGEX] [--skip REGEX]
   codemap.py verify <index_dir> <doc>
@@ -23,10 +24,20 @@ SPAN_KINDS = TYPE_KINDS | FN_KINDS | {"Impl", "Macro", "Constant", "StaticVariab
 MEMBER_KINDS = {"Field", "EnumMember"}
 # Test code by module name: `tests`, `foo_tests`, `test_support`, `test_utils`, `testing`.
 DEFAULT_EXCLUDE = r"(^|::)(tests?|\w+_tests?|test_(support|utils?|helpers?)|testing)(::|$)"
-# Bumped when build() output changes meaning; older graph.pkl files need `codemap rebuild`.
+# Bumped when build() output changes meaning; an older graph.pkl is refused with "run codemap rebuild".
 GRAPH_VERSION = 2
 # Placeholders page() fills in page.html; each must appear exactly once.
-PAGE_MARKERS = ("__TITLE__", "/*__DATA__*/", "<!--__SVGS__-->", "<!--__NOTES__-->", "<!--__BODY_START__-->", "<!--__BODY_END__-->")
+PAGE_MARKERS = ("__TITLE__", "/*__PALETTE__*/", "/*__DATA__*/", "<!--__SVGS__-->", "<!--__BODY_START__-->", "<!--__BODY_END__-->")
+# The only file that holds colors; see palette_css() and `codemap lint`.
+PALETTE_FILE = Path(__file__).parent / "palette.json"
+# Hidden first word of every flowchart label: mermaid sizes the box with it, so the kind badge
+# drawn by finish_svg() has room at the left edge. Mermaid trims leading spaces, hence a word.
+BADGE_PAD = "000"
+KIND_CLASS = {"Function": "fn", "Method": "fn", "StaticMethod": "fn", "TraitMethod": "fn", "Struct": "struct",
+              "Enum": "enum", "Trait": "trait", "TypeAlias": "alias", "Union": "union"}
+# f-hook for functions, m for methods, identical-to sign for type aliases.
+KIND_GLYPH = {"Function": "\u0192", "Method": "m", "StaticMethod": "m", "TraitMethod": "m", "Struct": "S",
+              "Enum": "E", "Trait": "T", "TypeAlias": "\u2261", "Union": "U"}
 
 
 # Symbol names ------------------------------------------------------------------------------------
@@ -96,7 +107,7 @@ def esc(s):
 
 ALL_KINDS = TYPE_KINDS | FN_KINDS | MEMBER_KINDS | {"Impl", "Macro", "Constant", "StaticVariable", "Module"}
 FILTER_KEYS = {"title", "question", "seed_types", "seed_fns", "callers", "callees", "crates", "exclude", "roles",
-               "max_nodes", "max_members", "modules", "classes"}
+               "max_members", "modules", "classes"}
 CLASSES_KEYS = {"methods"}
 ROLE_NAMES = {"constructs", "matches", "uses"}
 
@@ -118,80 +129,15 @@ def hits(rx, path):
     return bool(rx.search(path) or rx.search("::" + path))
 
 
-def split_top(s):
-    """Split a regex on `|` outside groups, character classes and escapes."""
-    parts, depth, cls, cur, i = [], 0, False, "", 0
-    while i < len(s):
-        c = s[i]
-        if c == "\\":
-            cur += s[i:i + 2]
-            i += 2
-            continue
-        if cls:
-            cls = c != "]"
-        elif c == "[":
-            cls = True
-        elif c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-        elif c == "|" and depth == 0:
-            parts.append(cur)
-            cur = ""
-            i += 1
-            continue
-        cur += c
-        i += 1
-    return parts + [cur]
-
-
-def alternatives(pat):
-    """`A|B` -> [A, B]; `(^A|^B)$` -> [^A$, ^B$]. The union is unchanged; splitting lets the report
-    show which alternative matched nothing. Anything fancier stays one pattern."""
-    if re.search(r"\(\?[aiLmsux-]", pat):
-        return [pat]  # inline flags apply to the whole pattern; splitting would drop them
-    alts = split_top(pat)
-    if len(alts) > 1:
-        return alts
-    depth, cls, i, start = 0, False, 0, None
-    while i < len(pat):
-        c = pat[i]
-        if c == "\\":
-            i += 2
-            continue
-        if cls:
-            cls = c != "]"
-        elif c == "[":
-            cls = True
-        elif c == "(":
-            if depth == 0:
-                if start is not None:
-                    return [pat]
-                start = i
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0 and start is not None:
-                prefix, body, suffix = pat[:start], pat[start + 1:i], pat[i + 1:]
-                body = body[2:] if body.startswith("?:") else body
-                if body.startswith("?") or "(" in suffix or "|" in suffix + prefix:
-                    return [pat]
-                inner = split_top(body)
-                return [prefix + a + suffix for a in inner] if len(inner) > 1 else [pat]
-        i += 1
-    return [pat]
-
-
 def patterns(flt, key):
-    """A filter value is one regex or a list of regexes (each reported separately, so a list shows
-    which entry matched nothing). Returns [(text, compiled)]."""
-    v = flt.get(key)
-    if v in (None, "", []):
+    """A filter value is a list of regexes, each reported separately so the report shows which
+    entry matched nothing. Returns [(text, compiled)]."""
+    items = flt.get(key)
+    if items is None:
         return []
-    items = [v] if isinstance(v, str) else v
     if not isinstance(items, list) or not all(isinstance(i, str) and i for i in items):
-        die(f"{key} must be a regex string or a list of non-empty regex strings, got {v!r}")
-    return [(a, compile_rx(key, a)) for p in items for a in alternatives(p)]
+        die(f"{key} must be a list of non-empty regex strings, got {items!r}")
+    return [(i, compile_rx(key, i)) for i in items]
 
 
 def close(word, options, n=4):
@@ -207,8 +153,6 @@ def crate_names(g):
 
 def resolve_crates(g, names):
     """Package names as the index spells them; `-` and `_` are interchangeable on input."""
-    if isinstance(names, str):
-        names = [names]
     known = crate_names(g)
     norm = {c.replace("-", "_"): c for c in known}
     out = []
@@ -235,7 +179,7 @@ def validate_filter(flt):
         if k not in FILTER_KEYS:
             hint = close(k, FILTER_KEYS, 1)
             die(f"unknown filter key {k!r}" + (f" (did you mean {hint[0]!r}?)" if hint else "") + f". Valid keys: {', '.join(sorted(FILTER_KEYS))}")
-    for k in ("callers", "callees", "max_nodes", "max_members"):
+    for k in ("callers", "callees", "max_members"):
         if k in flt and (not isinstance(flt[k], int) or isinstance(flt[k], bool) or flt[k] < 0):
             die(f"{k} must be a non-negative integer, got {flt[k]!r}")
     for k in ("crates", "roles"):
@@ -436,13 +380,11 @@ def build(index_dir, src_dir, pb_dir):
             else:
                 role = "uses"
             edges.append((container, o.symbol, d.relative_path, line + 1, role))
-    # Write-then-rename so a reader never sees a half-written pickle. graph.version lets the
-    # wrapper detect a stale graph without unpickling it (it rebuilds on its own).
+    # Write-then-rename so a reader never sees a half-written pickle.
     tmp_pkl = index_dir / "graph.pkl.tmp"
     with open(tmp_pkl, "wb") as fh:
         pickle.dump({"version": GRAPH_VERSION, "info": info, "defs": defs, "edges": edges}, fh)
     tmp_pkl.replace(index_dir / "graph.pkl")
-    (index_dir / "graph.version").write_text(f"{GRAPH_VERSION}\n")
     print(f"graph: {len(defs)} defs, {len(edges)} refs, {sum(len(v) for v in roles.values())} role tags in {time.time() - t:.1f}s")
 
 
@@ -486,7 +428,7 @@ def load_filter(path):
 def load(index_dir):
     g = pickle.load(open(Path(index_dir) / "graph.pkl", "rb"))
     if g.get("version") != GRAPH_VERSION:
-        sys.exit(f"codemap: {index_dir}/graph.pkl was built by an older codemap.py. Run: codemap rebuild (seconds); the wrapper normally does this itself")
+        sys.exit(f"codemap: {index_dir}/graph.pkl was built by an older codemap.py. Run: codemap rebuild (seconds)")
     return g
 
 
@@ -713,11 +655,10 @@ def render(g, flt, out_dir, meta):
     out = Path(out_dir)
     info, defs = g["info"], g["defs"]
     crate_set, exclude = filter_scope(g, flt)
-    max_nodes = flt.get("max_nodes", 30)
     max_members = flt.get("max_members", 12)
     roles_wanted = set(flt.get("roles") or ["constructs", "matches"])
     # `classes` swaps the mermaid type and flow views for one Graphviz class diagram nested by
-    # module. It is meant for whole crates, so max_nodes does not apply to it.
+    # module. It is meant for whole crates.
     classes = flt.get("classes") not in (None, False)
     copt = flt["classes"] if isinstance(flt.get("classes"), dict) else {}
     if classes:
@@ -742,8 +683,6 @@ def render(g, flt, out_dir, meta):
         sys.stdout.flush()
         print("ERROR: no seeds selected, nothing rendered. Fix the pattern (`codemap seeds SLUG` re-runs just this check).", file=sys.stderr)
         sys.exit(2)
-    if len(seed_set) > max_nodes:
-        print(f"note: {len(seed_set)} seed types is more than max_nodes={max_nodes}; an unanchored pattern may be matching names that merely contain yours (anchor with ^ and $)")
     out.mkdir(parents=True, exist_ok=True)
     seeds = sorted(seed_set, key=path_of)
 
@@ -898,13 +837,12 @@ def render(g, flt, out_dir, meta):
         def fn_sig(m):
             return re.sub(r"^(const\s+|async\s+|unsafe\s+)*fn\s+", "", member_sig(m))
 
-        kind_colour = {"Struct": "#1565c0", "Enum": "#2e7d32", "Trait": "#6a1b9a", "TypeAlias": "#ef6c00", "Union": "#795548"}
-
         def box(s):
             kind = info[s]["kind"]
+            # No colors here: finish_svg() classes the <<Kind>> row and palette.json colors it.
             parts = [
                 '<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" STYLE="rounded">',
-                f'<TR><TD><FONT POINT-SIZE="9" COLOR="{kind_colour.get(kind, "#555555")}">&lt;&lt;{kind}&gt;&gt;</FONT></TD></TR>',
+                f'<TR><TD><FONT POINT-SIZE="9">&lt;&lt;{kind}&gt;&gt;</FONT></TD></TR>',
                 f"<TR><TD><B>{html(name_of(s))}</B></TD></TR>",
             ]
             body = rows(members[s], member_sig)
@@ -918,7 +856,7 @@ def render(g, flt, out_dir, meta):
                 impls[(module_of(m)[1], parse(m)[2] or "")].append(m)
             for (where, trait) in sorted(impls, key=lambda k: (k[0] != home, k[1] != "", k)):
                 head = ("impl " + trait if trait else "impl") + ("" if where == home else f" in {where or 'crate root'}")
-                parts += ["<HR/>", f'<TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#607d8b"><I>{html(head)}</I></FONT></TD></TR>']
+                parts += ["<HR/>", f'<TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9"><I>{html(head)}</I></FONT></TD></TR>']
                 parts += rows(impls[(where, trait)], fn_sig)
             parts.append("</TABLE>")
             return "<" + "".join(parts) + ">"
@@ -937,7 +875,7 @@ def render(g, flt, out_dir, meta):
             "digraph classes {",
             '  graph [rankdir=TB, newrank=true, bgcolor="transparent", fontname="Arial", fontsize=12, nodesep=0.25, ranksep=0.7, pad=0.3]',
             '  node [shape=plain, fontname="Arial", fontsize=11]',
-            '  edge [fontname="Arial", fontsize=9, arrowsize=0.6, color="#78909c", fontcolor="#546e7a"]',
+            '  edge [fontname="Arial", fontsize=9, arrowsize=0.6]',
         ]
 
         def cluster(key, depth):
@@ -945,7 +883,8 @@ def render(g, flt, out_dir, meta):
             label = key[0] if len(key) == 1 else "::".join(key[1:])
             cid = "cluster_" + re.sub(r"[^A-Za-z0-9_]", "_", "__".join(key))
             cl.append(f'{pad}subgraph "{cid}" {{')
-            cl.append(f"{pad}  label={dot_str(label)}; labeljust=l; style=rounded; color=\"#90a4ae\"; fontsize={max(16 - 2 * depth, 11)}; penwidth={max(2.0 - 0.5 * depth, 1.0)}")
+            # depth-N picks the frame fill (cluster, cluster2, cluster3) in palette_css().
+            cl.append(f"{pad}  label={dot_str(label)}; labeljust=l; style=rounded; class=\"depth-{min(depth + 1, 3)}\"; fontsize={max(16 - 2 * depth, 11)}; penwidth={max(2.0 - 0.5 * depth, 1.0)}")
             for s in sorted(placed[key], key=path_of):
                 cl.append(f'{pad}  {nid(s)} [id="{nid(s)}", label={box(s)}]')
             for child in sorted(children[key]):
@@ -970,7 +909,8 @@ def render(g, flt, out_dir, meta):
         for crate, ns in sorted(groups.items()):
             lines.append(f"  subgraph {re.sub(r'[^A-Za-z0-9_]', '_', crate)}[\"{crate}\"]")
             for n in sorted(ns, key=lambda n: labels[n]):
-                lines.append(f'    {nid(n)}[["{esc(labels[n])}"]]' if is_seed(n) else f'    {nid(n)}("{esc(labels[n])}")')
+                text = f"{BADGE_PAD} {esc(labels[n])}"
+                lines.append(f'    {nid(n)}[["{text}"]]' if is_seed(n) else f'    {nid(n)}("{text}")')
             lines.append("  end")
         return lines + edges
 
@@ -1003,19 +943,19 @@ def render(g, flt, out_dir, meta):
             groups[k[1] if k[0] == "mod" else ""].append(k)
         for crate, ks in sorted(groups.items()):
             mc.append(f'  subgraph "cluster_{crate or "external"}" {{')
-            mc.append(f'    label={dot_str(crate or "external crates")}; labeljust=l; style=rounded')
+            mc.append(f'    label={dot_str(crate or "external crates")}; labeljust=l; style=rounded; class="depth-1"')
             for k in sorted(ks, key=module_label):
                 attrs = [f"label={dot_str(module_label(k))}", f'id="{mid[k]}"']
                 if k[0] == "ext":
                     attrs.append('style="rounded,dashed"')
                 if k in in_cycle:
-                    attrs += ['class="cycle"', 'color="#c62828"', "penwidth=2"]
+                    attrs += ['class="cycle"', "penwidth=2"]
                 mc.append(f"    {mid[k]} [{', '.join(attrs)}]")
             mc.append("  }")
         for (a, b), e in sorted(mods["edges"].items(), key=lambda kv: (mid[kv[0][0]], mid[kv[0][1]])):
             attrs = [f'label="{len(e["sites"])}"', f'id="L_{mid[a]}_{mid[b]}_0"']
             if a in in_cycle and in_cycle.get(b) == in_cycle[a]:
-                attrs += ['class="cycle"', 'color="#c62828"', "penwidth=1.6"]
+                attrs += ['class="cycle"', "penwidth=1.6"]
             mc.append(f"  {mid[a]} -> {mid[b]} [{', '.join(attrs)}]")
         mc.append("}")
 
@@ -1039,7 +979,6 @@ def render(g, flt, out_dir, meta):
             mod_nodes[mid[k]] = n
 
     n_mods = len(mods["nodes"]) if mods else 0
-    too_big = len(flow_nodes) > max_nodes or (len(seeds) > max_nodes and not classes) or len(call_nodes) > max_nodes or n_mods > max_nodes
     for name in ("calls", "flow", "types", "modules", "classes"):
         for ext in (".mmd", ".dot", ".svg"):
             (out / f"{name}{ext}").unlink(missing_ok=True)
@@ -1049,19 +988,18 @@ def render(g, flt, out_dir, meta):
     if classes and seeds:
         (out / "classes.dot").write_text("\n".join(cl) + "\n")
         diagrams.append("classes")
-    if not too_big:
-        if call_nodes:
-            (out / "calls.mmd").write_text("\n".join(cc) + "\n")
-            diagrams.append("calls")
-        if flow:
-            (out / "flow.mmd").write_text("\n".join(fc) + "\n")
-            diagrams.append("flow")
-        if seeds and not classes:
-            (out / "types.mmd").write_text("\n".join(td) + "\n")
-            diagrams.append("types")
-        if mods:
-            (out / "modules.dot").write_text("\n".join(mc) + "\n")
-            diagrams.append("modules")
+    if call_nodes:
+        (out / "calls.mmd").write_text("\n".join(cc) + "\n")
+        diagrams.append("calls")
+    if flow:
+        (out / "flow.mmd").write_text("\n".join(fc) + "\n")
+        diagrams.append("flow")
+    if seeds and not classes:
+        (out / "types.mmd").write_text("\n".join(td) + "\n")
+        diagrams.append("types")
+    if mods:
+        (out / "modules.dot").write_text("\n".join(mc) + "\n")
+        diagrams.append("modules")
     (out / "filter.json").write_text(json.dumps(flt, indent=2) + "\n")
 
     # Everything the page shows, keyed by the same node ids the diagrams use.
@@ -1118,7 +1056,6 @@ def render(g, flt, out_dir, meta):
             "filter": {k: v for k, v in flt.items() if k not in ("title", "question")},
         },
         "diagrams": diagrams,
-        "tooBig": {"maxNodes": max_nodes, "types": len(seeds), "flow": len(flow_nodes), "calls": len(call_nodes), "modules": n_mods} if too_big else None,
         "nodes": {**{nid(sym): node(sym) for sym in sorted(seed_set | flow_nodes | call_nodes, key=path_of)}, **mod_nodes},
         "edges": edges,
         "cycles": [[mid[k] for k in comp] for comp in mods["cycles"]] if mods else [],
@@ -1139,19 +1076,236 @@ def render(g, flt, out_dir, meta):
     hubs = collections.Counter()
     for (fn, t, _r), ev in flow.items():
         hubs[t] += len(ev)
-    if too_big:
-        print(f"TOO BIG (max_nodes={max_nodes}): diagrams omitted. Busiest types: " + ", ".join(f"{name_of(t)}({n})" for t, n in hubs.most_common(8)))
+    # Enough to judge the layout without opening the SVGs or taking a screenshot.
+    print("diagrams: " + (", ".join(diagrams) if diagrams else "none"))
+    if hubs:
+        top = hubs.most_common(3)
+        warn = " <- dominates; consider excluding it or splitting the filter" if len(top) > 0 and top[0][1] > 0.4 * sum(hubs.values()) and len(hubs) > 4 else ""
+        print("busiest types: " + ", ".join(f"{name_of(t)}({n})" for t, n in top) + warn)
+
+
+# Palette and SVG finishing -----------------------------------------------------------------------
+#
+# palette.json holds every color as --<token> custom properties. The rules below color the diagrams
+# from those tokens, and the same stylesheet goes into the page and into each standalone SVG, so the
+# two never drift. `svg.cm` is the root of a finished SVG. !important beats the ID-scoped rules
+# mermaid embeds and Graphviz's presentation attributes.
+
+# A hex color outside palette.json; `&#45;` entities and mermaid's `#124;` escapes are not colors.
+HEX_RX = re.compile(r"(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![\w;])")
+
+DIAGRAM_CSS = """
+svg.cm { background: var(--canvas); }
+svg.cm text, svg.cm tspan { fill: var(--fg) !important; font-family: Arial, Helvetica, sans-serif !important; }
+svg.cm .node .label-container, svg.cm g.node > path { filter: drop-shadow(0 1px 1.5px var(--node-shadow)); }
+svg.cm .node .label-container, svg.cm .node .outer-path path:first-child, svg.cm g.node > path, svg.cm g.node > polygon { fill: var(--node) !important; stroke: var(--node-line) !important; stroke-width: 1px !important; }
+svg.cm .node .outer-path path + path, svg.cm .divider path { stroke: var(--node-line) !important; }
+svg.cm .node.gen .label-container, svg.cm .node.gen .outer-path path:first-child, svg.cm g.node.gen > path { fill: var(--cm-hatch, var(--node)) !important; }
+svg.cm .node.seed .label-container, svg.cm .node.seed .outer-path path + path { stroke: var(--accent) !important; stroke-width: 2px !important; }
+svg.cm .node.cycle .label-container, svg.cm g.node.cycle > path, svg.cm g.node.cycle > polygon { stroke: var(--cycle) !important; stroke-width: 2px !important; }
+svg.cm .node.hit .label-container, svg.cm .node.hit .outer-path path:first-child, svg.cm g.node.hit > path, svg.cm g.node.hit > polygon { fill: var(--hit) !important; stroke: var(--hit-line) !important; }
+svg.cm .node.sel .label-container, svg.cm .node.sel .outer-path path:first-child, svg.cm g.node.sel > path, svg.cm g.node.sel > polygon { fill: var(--accent-soft) !important; stroke: var(--accent) !important; stroke-width: 3px !important; }
+svg.cm g.node > text[font-style="italic"] { fill: var(--muted) !important; }
+svg.cm .cluster rect, svg.cm g.cluster > path, svg.cm g.cluster > polygon { fill: var(--cluster) !important; stroke: var(--cluster-line) !important; }
+svg.cm g.cluster.depth-2 > path, svg.cm g.cluster.depth-2 > polygon { fill: var(--cluster2) !important; }
+svg.cm g.cluster.depth-3 > path, svg.cm g.cluster.depth-3 > polygon { fill: var(--cluster3) !important; }
+svg.cm .cluster-label text, svg.cm .cluster-label tspan, svg.cm g.cluster > text { fill: var(--muted) !important; font-weight: 600; }
+svg.cm .edgePaths path, svg.cm path[data-role] { stroke: var(--edge) !important; }
+svg.cm path[data-role="constructs"] { stroke: var(--make) !important; }
+svg.cm path[data-role="matches"] { stroke: var(--take) !important; }
+svg.cm path[data-role="cycle"] { stroke: var(--cycle) !important; stroke-width: 2px !important; }
+svg.cm marker path, svg.cm .arrowMarkerPath { fill: var(--edge) !important; stroke: var(--edge) !important; }
+svg.cm .edgeLabel rect, svg.cm .edgeLabel .background, svg.cm .labelBkg { fill: var(--cluster) !important; background: var(--cluster) !important; opacity: 1 !important; }
+svg.cm .edgeLabel text, svg.cm .edgeLabel tspan { fill: var(--muted) !important; }
+svg.cm g.edge > path { stroke: var(--edge) !important; }
+svg.cm g.edge > polygon { fill: var(--edge) !important; stroke: var(--edge) !important; }
+svg.cm g.edge > text { fill: var(--muted) !important; }
+svg.cm g.edge.cycle > path { stroke: var(--cycle) !important; stroke-width: 2px !important; }
+svg.cm g.edge.cycle > polygon { fill: var(--cycle) !important; stroke: var(--cycle) !important; }
+svg.cm .cm-pad { fill-opacity: 0 !important; }
+svg.cm .cm-badge rect { fill-opacity: 0.16; stroke: none; }
+svg.cm .cm-badge text { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+svg.cm .cm-tag rect { fill: var(--node) !important; stroke: var(--muted) !important; stroke-width: 1px; }
+svg.cm .cm-tag text { fill: var(--muted) !important; font-size: 8.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+svg.cm .cm-hatch-bg { fill: var(--node); }
+svg.cm .cm-hatch-line { stroke: var(--node-line); stroke-width: 1.5px; opacity: 0.6; }
+"""
+
+
+def load_palette():
+    return json.loads(PALETTE_FILE.read_text())
+
+
+def contrast(a, b):
+    """WCAG 2 contrast ratio of two #rrggbb colors."""
+    def lum(h):
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    lo, hi = sorted((lum(a), lum(b)))
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def palette_css(page):
+    """Tokens for light and dark, then the diagram rules. The page also honors its theme toggle."""
+    toks = load_palette()["tokens"]
+    light = "".join(f"--{k}:{v[0]};" for k, v in toks.items())
+    dark = "".join(f"--{k}:{v[1]};" for k, v in toks.items())
+    if page:
+        head = (f":root{{{light}}}\n@media (prefers-color-scheme: dark){{:root:not([data-theme=\"light\"]){{{dark}color-scheme:dark;}}}}\n"
+                f":root[data-theme=\"dark\"]{{{dark}color-scheme:dark;}}\n")
     else:
-        # Enough to judge the layout without opening the SVGs or taking a screenshot.
-        print("diagrams: " + (", ".join(diagrams) if diagrams else "none"))
-        if hubs:
-            top = hubs.most_common(3)
-            warn = " <- dominates; consider excluding it or splitting the filter" if len(top) > 0 and top[0][1] > 0.4 * sum(hubs.values()) and len(hubs) > 4 else ""
-            print("busiest types: " + ", ".join(f"{name_of(t)}({n})" for t, n in top) + warn)
+        head = f":root{{{light}}}\n@media (prefers-color-scheme: dark){{:root{{{dark}}}}}\n"
+    kinds = "".join(
+        f"svg.cm .cm-kind.kind-{k} {{ fill: var(--kind-{k}) !important; }}\n"
+        f"svg.cm .cm-badge.kind-{k} rect {{ fill: var(--kind-{k}); }}\n"
+        f"svg.cm .cm-badge.kind-{k} text {{ fill: var(--kind-{k}) !important; }}\n"
+        for k in sorted(set(KIND_CLASS.values())))
+    return head + DIAGRAM_CSS + kinds
+
+
+def mermaid_config():
+    """mermaid.json (layout) plus themeVariables from the light palette, so an SVG read without its
+    stylesheet still has palette colors. The stylesheet in the SVG wins wherever it applies."""
+    cfg = json.loads((Path(__file__).parent / "mermaid.json").read_text())
+    t = {k: v[0] for k, v in load_palette()["tokens"].items()}
+    cfg["themeVariables"].update({
+        "background": t["canvas"], "primaryColor": t["node"], "mainBkg": t["node"], "primaryBorderColor": t["node-line"],
+        "nodeBorder": t["node-line"], "primaryTextColor": t["fg"], "textColor": t["fg"], "lineColor": t["edge"],
+        "clusterBkg": t["cluster"], "clusterBorder": t["cluster-line"], "edgeLabelBackground": t["cluster"],
+    })
+    print(json.dumps(cfg, indent=2))
+
+
+def coords(s):
+    nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?(?:e-?\d+)?", s)]
+    return nums[0::2], nums[1::2]
+
+
+def shape_box(seg, mermaid):
+    """(x0, y0, x1, y1) of a node's outline, in the coordinates of the node's own group."""
+    if mermaid:
+        r = re.search(r'<rect class="basic label-container"[^>]*>', seg)
+        if r:
+            a = dict(re.findall(r'\b(x|y|width|height)="([-\d.]+)"', r.group(0)))
+            x, y = float(a["x"]), float(a["y"])
+            return x, y, x + float(a["width"]), y + float(a["height"])
+        # Subroutine shape: the first four points are the inner box, the outer lines sit 8 px out.
+        p = re.search(r'<polygon points="([^"]*)" class="label-container"(?: transform="translate\(([-\d.]+),\s*([-\d.]+)\)")?', seg)
+        if p:
+            xs, ys = coords(p.group(1))
+            tx, ty = float(p.group(2) or 0), float(p.group(3) or 0)
+            return min(xs[:4]) + tx, min(ys[:4]) + ty, max(xs[:4]) + tx, max(ys[:4]) + ty
+        q = re.search(r'<g class="basic label-container outer-path">\s*<path d="([^"]*)"', seg)
+        if not q:
+            return None
+        xs, ys = coords(q.group(1))
+    else:
+        xs, ys = [], []
+        for s in re.findall(r'\b(?:points|d)="([^"]*)"', seg):
+            x, y = coords(s)
+            xs += x
+            ys += y
+        if not xs:
+            return None
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+NODE_OPEN = re.compile(r'<g class="node([^"]*)" id="([^"]*)"|<g id="(n[0-9a-f]{8})" class="node([^"]*)"')
+
+
+def finish_node(seg, mo, nodes):
+    """Classes, kind badge and generated tag for one node group; `seg` runs to the next node."""
+    mermaid = not mo.group(3)
+    if mermaid:
+        hit = re.search(r"-(?:flowchart|classId)-(n[0-9a-f]{8})-\d+$", mo.group(2))
+        n = nodes.get(hit.group(1)) if hit else None
+    else:
+        n = nodes.get(mo.group(3))
+        # A Graphviz node group has no nested groups; edges follow it, so work on the group only.
+        end = seg.index("</g>")
+        seg, rest = seg[:end], seg[end:]
+    if not n:
+        return seg if mermaid else seg + rest
+    kind = KIND_CLASS.get(n["kind"])
+    # No definition site: prost output, derive or macro expansion. Crate: an external crate.
+    gen = n["kind"] == "Crate" or (n["kind"] in TYPE_KINDS | FN_KINDS and not n.get("def"))
+    classes = " ".join(c for c in (f"kind-{kind}" if kind else "", "seed" if n.get("seed") else "", "gen" if gen else "") if c)
+    if classes:
+        seg = seg.replace('class="node', f'class="node {classes}', 1)
+    if not mermaid:
+        # HTML-label rules (<HR/>) come out before the table outline, whose fill would hide them.
+        outline = re.search(r"<path [^>]*/>", seg)
+        if outline:
+            rules = re.findall(r"<polygon [^>]*/>\n?", seg[:outline.start()])
+            if rules:
+                seg = re.sub(r"<polygon [^>]*/>\n?", "", seg[:outline.start()]) + outline.group(0) + "\n" + "".join(rules) + seg[outline.end():]
+    box = shape_box(seg, mermaid)
+    extra = ""
+    pad = f'class="text-inner-tspan" font-weight="normal">{BADGE_PAD}</tspan>'
+    if box and kind and mermaid and "-flowchart-" in mo.group(2) and pad in seg:
+        seg = seg.replace(pad, pad.replace('text-inner-tspan"', 'text-inner-tspan cm-pad"'), 1)
+        x0, y0, _x1, y1 = box
+        h = min(16.0, y1 - y0 - 8)
+        bx, by = x0 + 5, (y0 + y1 - h) / 2
+        extra += (f'<g class="cm-badge kind-{kind}"><rect x="{bx:.1f}" y="{by:.1f}" width="{h:.1f}" height="{h:.1f}" rx="3"/>'
+                  f'<text x="{bx + h / 2:.1f}" y="{by + h / 2:.1f}">{KIND_GLYPH[n["kind"]]}</text></g>')
+    if box and gen:
+        _x0, y0, x1, _y1 = box
+        extra += (f'<g class="cm-tag"><rect x="{x1 - 28:.1f}" y="{y0 - 6:.1f}" width="22" height="12" rx="6"/>'
+                  f'<text x="{x1 - 17:.1f}" y="{y0:.1f}">{"ext" if n["kind"] == "Crate" else "gen"}</text></g>')
+    if not extra:
+        return seg if mermaid else seg + rest
+    if mermaid:
+        at = seg.find('<g class="label"')
+        return seg + extra if at < 0 else seg[:at] + extra + seg[at:]
+    return seg + extra + rest
+
+
+def finish_svg(svg, name, data):
+    """Theme one rendered SVG and add what the renderers can't: node classes from graph.json (seed,
+    kind, generated), kind badges on flowchart boxes, edge roles and the palette stylesheet.
+    A finished SVG (root class `cm`) only gets its stylesheet replaced, so this is safe to rerun."""
+    svg = re.sub(r'<style id="cm-palette">.*?</style>', "", svg[svg.index("<svg"):], count=1, flags=re.S)
+    root = re.match(r"<svg\b[^>]*>", svg)
+    if not re.search(r'\sclass="[^"]*\bcm\b', root.group(0)):
+        sid = f"dg-{name}"
+        # mermaid-cli pins a white background and a max-width; the stylesheet and page take over.
+        tag = re.sub(r'\s(?:style|id)="[^"]*"', "", root.group(0))
+        if re.search(r'\sclass="', tag):
+            tag = re.sub(r'\sclass="([^"]*)"', r' class="\1 cm"', tag, count=1)
+        else:
+            tag = tag[:-1] + ' class="cm">'
+        tag = tag[:4] + f' id="{sid}" style="--cm-hatch:url(#{sid}-hatch)"' + tag[4:]
+        defs = (f'<defs><pattern id="{sid}-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+                '<rect width="6" height="6" class="cm-hatch-bg"/><line x1="0" y1="0" x2="0" y2="6" class="cm-hatch-line"/></pattern></defs>')
+        body = svg[root.end():]
+        roles = {(e["m"][0], e["m"][1]): e["role"] for e in data["edges"] if e["d"] == name}
+
+        def role(m):
+            r = roles.get((m.group(1), m.group(2)))
+            return m.group(0) + (f' data-role="{r}"' if r else "")
+        body = re.sub(r'data-id="(?:L|id)_(n[0-9a-f]{8})_(n[0-9a-f]{8})_\d+"', role, body)
+        opens = list(NODE_OPEN.finditer(body))
+        parts, last = [], 0
+        for k, mo in enumerate(opens):
+            end = opens[k + 1].start() if k + 1 < len(opens) else len(body)
+            parts += [body[last:mo.start()], finish_node(body[mo.start():end], mo, data["nodes"])]
+            last = end
+        body = "".join(parts) + body[last:]
+        # <<Kind>> rows: Graphviz class boxes write the text directly, mermaid class diagrams as
+        # a guillemet annotation.
+        body = re.sub(r"<text([^>]*)>&lt;&lt;(\w+)&gt;&gt;</text>",
+                      lambda m: f'<text class="cm-kind kind-{KIND_CLASS.get(m.group(2), "fn")}"{m.group(1)}>&lt;&lt;{m.group(2)}&gt;&gt;</text>', body)
+        body = re.sub('class="text-inner-tspan"([^>]*)>\u00ab(\\w+)\u00bb<',
+                      lambda m: f'class="text-inner-tspan cm-kind kind-{KIND_CLASS.get(m.group(2), "fn")}"{m.group(1)}>\u00ab{m.group(2)}\u00bb<', body)
+        svg = tag + defs + body
+    at = svg.index(">") + 1
+    return svg[:at] + f'<style id="cm-palette">{palette_css(False)}</style>' + svg[at:]
 
 
 def page(out_dir, artifact):
-    """Assemble index.html from graph.json, the rendered SVGs and the optional notes.html."""
+    """Assemble index.html from graph.json, and the rendered SVGs."""
     out = Path(out_dir)
     if not (out / "graph.json").exists():
         sys.exit(f"codemap: no graph.json in {out}; run `codemap render` first")
@@ -1164,17 +1318,17 @@ def page(out_dir, artifact):
     for name in data["diagrams"]:
         if not (out / f"{name}.svg").exists():
             sys.exit(f"codemap: {out}/{name}.svg is missing; run `codemap render` (not `page`) to redraw it")
-        svg = (out / f"{name}.svg").read_text()
-        # mermaid-cli pins a white background and a max-width; the page themes and sizes it.
-        # Graphviz output starts with an XML prolog and doctype, which don't belong inside HTML.
-        svgs[name] = re.sub(r'style="max-width:[^"]*"', "", svg[svg.index("<svg"):], count=1)
-    notes_file = out / "notes.html"
+        # The standalone file is rewritten finished too, so it matches the page in both themes.
+        svg = finish_svg((out / f"{name}.svg").read_text(), name, data)
+        (out / f"{name}.svg").write_text(svg)
+        # The page carries the palette stylesheet once instead of once per diagram.
+        svgs[name] = re.sub(r'<style id="cm-palette">.*?</style>', "", svg, count=1, flags=re.S)
     payload = json.dumps(data, sort_keys=True).replace("</", "<\\/")
     html = (
-        html.replace("__TITLE__", data["meta"]["title"].replace("&", "&amp;").replace("<", "&lt;"))
+        html.replace("/*__PALETTE__*/", palette_css(True))
+        .replace("__TITLE__", data["meta"]["title"].replace("&", "&amp;").replace("<", "&lt;"))
         .replace("/*__DATA__*/", payload)
         .replace("<!--__SVGS__-->", "".join(f'<template id="svg-{k}">{v}</template>' for k, v in svgs.items()))
-        .replace("<!--__NOTES__-->", notes_file.read_text() if notes_file.exists() else "")
     )
     if artifact:
         # The Artifact viewer adds its own document skeleton.
@@ -1204,7 +1358,7 @@ def graph_cmd(out_dir, args):
 
     if sub == "summary":
         print(f"{d['meta']['title']} @ {d['meta']['commit'][:10]}; diagrams: {', '.join(d['diagrams']) or 'none'}")
-        print(f"nodes {len(nodes)}, edges {len(edges)}, cycles {len(d['cycles'])}, mutual {len(d['mutual'])}, tooBig {bool(d['tooBig'])}")
+        print(f"nodes {len(nodes)}, edges {len(edges)}, cycles {len(d['cycles'])}, mutual {len(d['mutual'])}")
         for k, n in sorted(collections.Counter(e["d"] for e in edges).items()):
             print(f"  {k} edges: {n}")
     elif sub == "nodes":
@@ -1222,7 +1376,7 @@ def graph_cmd(out_dir, args):
             print(f"mutual: {label(a)} <-> {label(b)}")
     elif sub == "by-module":
         # For the types/classes views: where the seed types live, and which modules' fields reach
-        # into which others. Notes on a class map need exactly these counts.
+        # into which others. Class-map counts come from here.
         def mod(i):
             n = nodes[i]
             return n.get("module", "::".join(n["path"].split("::")[1:-1])) or "(crate root)"
@@ -1269,6 +1423,33 @@ def lint():
         if html.count(m) != 1:
             print(f"page.html: {m} appears {html.count(m)} times, expected 1")
             bad += 1
+    # Colors live in palette.json only, so a theme change is one edit and contrast stays checked.
+    for f in ("codemap.py", "page.html", "mermaid.json", "codemap"):
+        for n, line in enumerate((root / "scripts" / f).read_text().splitlines(), 1):
+            if HEX_RX.search(line):
+                print(f"color outside palette.json  scripts/{f}:{n}: {line.strip()[:70]}")
+                bad += 1
+    pal = load_palette()
+    toks = pal["tokens"]
+    for k, v in toks.items():
+        if not (isinstance(v, list) and len(v) == 2 and all(isinstance(c, str) and re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", c) for c in v)):
+            print(f"palette.json: {k} must be [light, dark], each #rrggbb or #rrggbbaa")
+            bad += 1
+            toks[k] = None
+    for k in ("kind-" + c for c in sorted(set(KIND_CLASS.values()))):
+        if k not in toks:
+            print(f"palette.json: missing token {k}")
+            bad += 1
+    for a, b, need, why in pal["contrast"]:
+        if not toks.get(a) or not toks.get(b):
+            print(f"palette.json: contrast pair {a}/{b} names a missing or invalid token")
+            bad += 1
+            continue
+        for i, theme in enumerate(("light", "dark")):
+            r = contrast(toks[a][i][:7], toks[b][i][:7])
+            if r < need:
+                print(f"palette.json: {a}/{b} is {r:.2f} in {theme}, needs {need} ({why})")
+                bad += 1
     compile((root / "scripts" / "codemap.py").read_text(), "codemap.py", "exec")
     print("lint: ok" if not bad else f"lint: {bad} problem(s)")
     sys.exit(1 if bad else 0)
@@ -1326,10 +1507,10 @@ if __name__ == "__main__":
         page(args[0], "--artifact" in args)
     elif cmd == "graph":
         graph_cmd(args[0], args[1:])
-    elif cmd == "version":
-        print(GRAPH_VERSION)
     elif cmd == "lint":
         lint()
+    elif cmd == "mermaid-config":
+        mermaid_config()
     elif cmd == "crates":
         crates(args[0], args[1] if len(args) > 1 else None)
     elif cmd == "modules":

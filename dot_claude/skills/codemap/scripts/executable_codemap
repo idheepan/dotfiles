@@ -4,14 +4,15 @@
 #   codemap index  [--repo DIR] [--rev REV] [--ws DIR] [--shell NAME] [--timeout S] [--fg]
 #                  (starts a background build if needed, waits up to S=100 s; exit 4 = still running)
 #   codemap wait   [opts] [--timeout S]                      (block until the running index finishes; exit 4 = still running)
-#   codemap rebuild [--repo DIR] [--rev REV] [--ws DIR]   (roles + graph only; queries do this by themselves when stale)
+#   codemap rebuild [--repo DIR] [--rev REV] [--ws DIR]   (roles + graph only; needed after codemap.py changes the graph format)
 #   codemap status [--repo DIR] [--rev REV] [--ws DIR]       (exit 0 indexed, 3 not indexed, 4 indexing)
 #   codemap find   [opts] REGEX [--kinds Struct,Enum,...] [--crates C,C] [--exclude REGEX]
 #   codemap refs   [opts] REGEX [--crates C,C] [--exclude REGEX]   (scope applies to the referring fn)
 #   codemap dir    SLUG                                      (create the output folder, print its path)
 #   codemap render [opts] SLUG|FILTER.json [OUT_DIR] [--artifact]   (writes OUT_DIR/index.html)
+#   codemap rerun  SLUG|OUT_DIR|OUT_DIR/index.html          (re-render an existing map from its saved filter.json at --rev; nothing else to do)
 #   codemap seeds  [opts] SLUG|FILTER.json                   (dry run of seed_types/seed_fns: what matches, why not; writes nothing)
-#   codemap page   SLUG|OUT_DIR [--artifact]                 (re-assemble after editing notes.html)
+#   codemap page   SLUG|OUT_DIR [--artifact]                 (re-assemble index.html from graph.json + SVGs)
 #   codemap shot   SLUG|OUT_DIR [PNG]                        (screenshot of index.html, default OUT_DIR/screenshot.png)
 #   codemap graph SLUG|OUT_DIR [summary|nodes [REGEX]|edges [REGEX]|cycles|by-module]   (read graph.json; no ad-hoc Python)
 #   codemap lint                                             (ASCII-only files, page.html markers, syntax; run after editing the skill)
@@ -59,7 +60,7 @@ slug_dir() {
 }
 
 [ "${1:-}" = --help ] && set -- help
-cmd=${1:-}; [ -n "$cmd" ] || die "usage: codemap <index|rebuild|status|find|refs|render|seeds|dir|page|graph|lint|shot|crates|modules|verify|cache|help> ..."; shift
+cmd=${1:-}; [ -n "$cmd" ] || die "usage: codemap <index|rebuild|status|find|refs|render|rerun|seeds|dir|page|graph|lint|shot|crates|modules|verify|cache|help> ..."; shift
 repo=$PWD rev=HEAD ws=host shell="" committed=0 timeout=100 fg=0 rest=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -99,11 +100,14 @@ render_svgs() {
         "$gv/bin/dot" -Tsvg "$f" -o "${f%.dot}.svg" || die "graphviz failed on $f"
     done
     [ -e "$link/bin/mmdc" ] || nix build --out-link "$link" nixpkgs#mermaid-cli >&2
+    # mermaid.json plus palette colors; `page` then finishes every SVG (classes, badges, stylesheet).
+    mkdir -p "$CACHE/run"
+    "$PY" -I "$SKILL_DIR/codemap.py" mermaid-config > "$CACHE/run/mermaid.json"
     for f in "$out"/*.mmd; do
         [ -e "$f" ] || continue
         name=$(basename "$f" .mmd)
         # A distinct svg id per diagram keeps their scoped styles and arrow markers apart on one page.
-        "$link/bin/mmdc" -q -c "$SKILL_DIR/mermaid.json" -I "dg-$name" -i "$f" -o "$out/$name.svg" >&2 \
+        "$link/bin/mmdc" -q -c "$CACHE/run/mermaid.json" -I "dg-$name" -i "$f" -o "$out/$name.svg" >&2 \
             || die "mermaid-cli failed on $f"
     done
 }
@@ -199,14 +203,6 @@ rebuild_graph() {
     build_graph "$src/$ws" "$INDEX"
 }
 
-fresh_graph() {
-    # A graph from an older codemap.py is rebuilt right here (about 5 s) instead of failing the query.
-    python_env
-    [ "$(cat "$INDEX/graph.version" 2>/dev/null)" = "$("$PY" -I "$SKILL_DIR/codemap.py" version)" ] && return 0
-    echo "codemap: graph is from an older codemap.py; rebuilding it (about 5 s) ..." >&2
-    rebuild_graph >&2
-}
-
 # ---- background indexing -----------------------------------------------------------------------------
 index_alive() { [ -f "$RUNBASE.pid" ] && kill -0 "$(cat "$RUNBASE.pid")" 2>/dev/null; }
 
@@ -290,7 +286,6 @@ ensure_index() {
             *) exit 1 ;;
         esac
     fi
-    fresh_graph
 }
 
 case "$cmd" in
@@ -301,7 +296,7 @@ index)
         do_index
         exit 0
     fi
-    [ -f "$INDEX/graph.pkl" ] && { fresh_graph; echo "cached: $INDEX"; exit 0; }
+    [ -f "$INDEX/graph.pkl" ] && { echo "cached: $INDEX"; exit 0; }
     ensure_index
     echo "indexed: $INDEX"
     ;;
@@ -333,9 +328,16 @@ status)
     elif index_alive; then echo "indexing: $label/$ws (codemap wait)"; exit 4
     else echo "not indexed: $label/$ws (run: codemap index)"; exit 3; fi
     ;;
-render)
+render | rerun)
     # graph.json + .mmd from the index, SVGs from mermaid-cli, then the HTML page.
+    # rerun = render of an existing map: takes the folder, its index.html, or a slug; reuses its filter.json.
     resolve; ensure_index; python_env
+    if [ "$cmd" = rerun ]; then
+        [ ${#rest[@]} -eq 1 ] || die "usage: codemap rerun SLUG|OUT_DIR|OUT_DIR/index.html"
+        a=${rest[0]}; [[ "$a" == *.html ]] && a=$(dirname "$a")
+        rest[0]=$a
+        [ -f "$(slug_dir "$a")/filter.json" ] || die "rerun: no filter.json in $(slug_dir "$a"); it is not a codemap folder"
+    fi
     [ ${#rest[@]} -ge 1 ] || die "usage: codemap render SLUG|FILTER.json [OUT_DIR] [--artifact]"
     flt=${rest[0]}
     [[ "$flt" == *.json && -f "$flt" ]] || flt=$(slug_dir "$flt")/filter.json
@@ -361,7 +363,7 @@ dir)
     d=$(slug_dir "${rest[0]}"); mkdir -p "$d"; (cd "$d" && pwd)
     ;;
 page)
-    # Re-assemble the HTML after editing notes.html; no index needed.
+    # Re-assemble the HTML from graph.json + SVGs; no index needed.
     python_env
     [ ${#rest[@]} -ge 1 ] || die "usage: codemap page SLUG|OUT_DIR [--artifact]"
     "$PY" -I "$SKILL_DIR/codemap.py" page "$(slug_dir "${rest[0]}")" "${rest[@]:1}"

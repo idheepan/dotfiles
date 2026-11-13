@@ -7,8 +7,7 @@
   check `git log --all -S 'struct Name' --oneline` and index that rev before calling it wrong.
   Names from other repos (Atlantis Python, GUI TypeScript) will also show as missing.
 - `codemap rebuild`: re-runs the ast-grep role scan and graph build on a cached index without
-  rust-analyzer (seconds). Queries run it on their own when the graph is
-  from an older `codemap.py`; call it yourself only to force a refresh after editing `roles.yml`.
+  rust-analyzer (seconds). Run it after editing `roles.yml`, or when a query says the graph is from an older `codemap.py`.
 - `codemap cache`: sizes and dates of cached indexes. Each commit costs about 100 MB; the shared
   clone and cargo target dir are reused across commits.
 

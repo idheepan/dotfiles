@@ -8,43 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
+/* Colors and diagram styling: generated from palette.json by palette_css() in codemap.py. */
+/*__PALETTE__*/
 /* Layout: a working surface. Diagram stage beside a sticky inspector, tables below; one column on narrow screens. */
 :root {
-  --bg: #f2f3ef;
-  --surface: #fbfbf8;
-  --raised: #ffffff;
-  --fg: #1b201d;
-  --muted: #59625c;
-  --line: #d3d8d1;
-  --accent: #2b5d8c;
-  --accent-soft: #e2ebf3;
-  --make: #2d7647;
-  --take: #a25d0c;
-  --edge: #6f7a73;
-  --node: #ffffff;
-  --node-line: #8b958e;
-  --cluster: #e9ece5;
-  --hit: #f4e2a1;
-  --hit-line: #b38a12;
-  --note: #eef0e8;
-  --cycle: #b3261e;
   --f-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
   --f-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #111412; --surface: #171b18; --raised: #1d221f; --fg: #e2e6e2; --muted: #98a29b; --line: #2d3430;
-    --accent: #84b2df; --accent-soft: #1d2a36; --make: #79c690; --take: #e3a65a; --edge: #7f8a83;
-    --node: #1d221f; --node-line: #59645d; --cluster: #181d1a; --hit: #4d4112; --hit-line: #e2c25c; --note: #1a1f1b; --cycle: #f0877b;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #111412; --surface: #171b18; --raised: #1d221f; --fg: #e2e6e2; --muted: #98a29b; --line: #2d3430;
-  --accent: #84b2df; --accent-soft: #1d2a36; --make: #79c690; --take: #e3a65a; --edge: #7f8a83;
-  --node: #1d221f; --node-line: #59645d; --cluster: #181d1a; --hit: #4d4112; --hit-line: #e2c25c; --note: #1a1f1b; --cycle: #f0877b;
-  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
@@ -86,42 +56,15 @@ h1 { font: 600 clamp(26px, 3.4vw, 38px)/1.1 var(--f-display); margin: 0; text-wr
 .legend .sw { display: inline-block; width: 22px; height: 0; border-top: 2px solid; vertical-align: middle; margin: 0 4px 0 2px; }
 .sw.make { border-color: var(--make); } .sw.take { border-color: var(--take); border-top-style: dotted; } .sw.call { border-color: var(--edge); } .sw.cycle { border-color: var(--cycle); }
 
-.dg { position: relative; height: clamp(340px, 68vh, 940px); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: none; cursor: grab; }
+.dg { position: relative; height: clamp(340px, 68vh, 940px); background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; touch-action: none; cursor: grab; }
 .dg.dragging { cursor: grabbing; }
 .dg .hint { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted); pointer-events: none; }
+/* Diagram colors come from the palette block above; only interaction states live here. */
 .dg svg { display: block; width: 100%; height: 100%; background: transparent !important; }
-.dg svg text, .dg svg tspan { fill: var(--fg) !important; font-family: Arial, Helvetica, sans-serif !important; }
 .dg svg .node { cursor: pointer; }
-.dg svg .node .label-container, .dg svg .node rect.basic, .dg svg .node .outer-path path:first-child { fill: var(--node) !important; stroke: var(--node-line) !important; stroke-width: 1px !important; }
-.dg svg .node .outer-path path + path, .dg svg .divider path { stroke: var(--node-line) !important; }
-.dg svg .node.seed .label-container, .dg svg .node.seed rect.basic, .dg svg .node.seed .outer-path path + path { stroke: var(--accent) !important; stroke-width: 2px !important; }
-.dg svg .node.cycle .label-container, .dg svg .node.cycle rect.basic { stroke: var(--cycle) !important; stroke-width: 2px !important; }
-.dg svg .node.hit .label-container, .dg svg .node.hit rect.basic, .dg svg .node.hit .outer-path path:first-child { fill: var(--hit) !important; stroke: var(--hit-line) !important; }
-.dg svg .node.sel .label-container, .dg svg .node.sel rect.basic, .dg svg .node.sel .outer-path path:first-child { fill: var(--accent-soft) !important; stroke: var(--accent) !important; stroke-width: 3px !important; }
-.dg svg .cluster rect { fill: var(--cluster) !important; stroke: var(--line) !important; }
-.dg svg .cluster-label text, .dg svg .cluster-label tspan { fill: var(--muted) !important; font-weight: 600; }
-.dg svg path[data-role] { stroke: var(--edge) !important; }
-.dg svg path[data-role="constructs"] { stroke: var(--make) !important; }
-.dg svg path[data-role="matches"] { stroke: var(--take) !important; }
-.dg svg path[data-role="cycle"] { stroke: var(--cycle) !important; stroke-width: 2px !important; }
-.dg svg marker path, .dg svg .arrowMarkerPath { fill: var(--edge) !important; stroke: var(--edge) !important; }
-.dg svg .edgeLabel rect, .dg svg .edgeLabel .background { fill: var(--surface) !important; opacity: 1 !important; }
-.dg svg .edgeLabel text, .dg svg .edgeLabel tspan { fill: var(--muted) !important; }
 .dg.focus svg .node:not(.on):not(.sel), .dg.focus svg .cluster { opacity: 0.25; }
 .dg.focus svg path[data-role]:not(.on), .dg.focus svg .edgeLabel:not(.on) { opacity: 0.1; }
 .dg svg path[data-role].on { stroke-width: 3px !important; }
-/* Graphviz (module graph): shapes are direct children of g.node / g.edge / g.cluster. */
-.dg svg g.node > path, .dg svg g.node > polygon { fill: var(--node) !important; stroke: var(--node-line) !important; stroke-width: 1px !important; }
-.dg svg g.node.cycle > path, .dg svg g.node.cycle > polygon { stroke: var(--cycle) !important; stroke-width: 2px !important; }
-.dg svg g.node.hit > path, .dg svg g.node.hit > polygon { fill: var(--hit) !important; stroke: var(--hit-line) !important; }
-.dg svg g.node.sel > path, .dg svg g.node.sel > polygon { fill: var(--accent-soft) !important; stroke: var(--accent) !important; stroke-width: 3px !important; }
-.dg svg g.cluster > path, .dg svg g.cluster > polygon { fill: var(--cluster) !important; stroke: var(--line) !important; }
-.dg svg g.cluster > text { fill: var(--muted) !important; font-weight: 600; }
-.dg svg g.edge > path { stroke: var(--edge) !important; }
-.dg svg g.edge > polygon { fill: var(--edge) !important; stroke: var(--edge) !important; }
-.dg svg g.edge > text { fill: var(--muted) !important; }
-.dg svg g.edge.cycle > path { stroke: var(--cycle) !important; stroke-width: 2px !important; }
-.dg svg g.edge.cycle > polygon { fill: var(--cycle) !important; stroke: var(--cycle) !important; }
 .dg svg g.edge.on > path { stroke-width: 3px !important; }
 .dg.focus svg g.edge:not(.on) { opacity: 0.1; }
 .notice { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
@@ -179,14 +122,6 @@ ul.members { margin: 0; padding: 0; list-style: none; font: 12px/1.6 var(--f-mon
 /* The hidden attribute must win over the display rules above (section.tables is a grid, .tools a flex row). */
 [hidden] { display: none !important; }
 
-section.notes { background: var(--note); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px 20px; display: grid; gap: 10px; }
-section.notes > .eyebrow { display: flex; gap: 10px; flex-wrap: wrap; }
-.notes-body { max-width: 78ch; }
-.notes-body h3 { font: 600 17px/1.25 var(--f-display); margin: 18px 0 6px; }
-.notes-body h3:first-child { margin-top: 0; }
-.notes-body p, .notes-body ul { margin: 0 0 10px; }
-.notes-body li { margin-bottom: 4px; }
-.notes-body em { color: var(--take); font-style: normal; font-weight: 600; }
 
 section.tables { display: grid; gap: 14px; }
 section.tables h2 { margin: 0; font: 600 22px/1.2 var(--f-display); }
@@ -243,10 +178,6 @@ td.sitecell .sites { padding-left: 0; }
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
 
-  <section class="notes" id="notes" hidden>
-    <div class="eyebrow"><span>Notes</span><span>Interpretation written by Claude. Lines marked inference go beyond the index.</span></div>
-    <div class="notes-body" id="notes-body"><!--__NOTES__--></div>
-  </section>
 
   <section class="tables" id="cycles" hidden>
     <h2>Cycles</h2>
@@ -276,13 +207,13 @@ td.sitecell .sites { padding-left: 0; }
   const NODES = DATA.nodes;
   const META = DATA.meta;
   const DIAGRAMS = {
-    calls: { name: "Call chain", legend: () => ["Arrow points from caller to callee ", sw("call"), ". Blue border: the functions in seed_fns. Calls through trait objects, channels and macro-registered handlers are not in the index."] },
-    flow: { name: "Producers and consumers", legend: () => ["Function constructs the type or variant ", sw("make"), ". Type or variant is matched in the function ", sw("take"), ". Numbers count sites. Blue border: seed types."] },
-    types: { name: "Type shapes", legend: () => ["Fields and variants as declared. An arrow means a field or variant mentions another type on this page."] },
+    calls: { name: "Call chain", legend: () => ["Arrow points from caller to callee ", sw("call"), ". Blue border: the functions in seed_fns. Badge: ƒ function, m method. Calls through trait objects, channels and macro-registered handlers are not in the index."] },
+    flow: { name: "Producers and consumers", legend: () => ["Function constructs the type or variant ", sw("make"), ". Type or variant is matched in the function ", sw("take"), ". Numbers count sites. Blue border: seed types. Badge: ƒ function, m method, S struct, E enum, T trait, ≡ type alias. Hatched with a gen tag: generated code (prost output, macro or derive), no source to open."] },
+    types: { name: "Type shapes", legend: () => ["Fields and variants as declared. An arrow means a field or variant mentions another type on this page. Hatched with a gen tag: generated type, no source to open."] },
     classes: { name: "Classes by module", legend: () => ["Each box is a type inside the module that defines it; nested frames are submodules. Rows: fields or variants, then methods when enabled, one section per impl block, naming its trait and, when the impl is not beside the type, its module. Derived and macro-generated impls are left out. An arrow means a field or variant mentions another type on this page, labelled with the fields."] },
     modules: { name: "Module dependencies", legend: () => [
       "Arrow points from the module holding a reference to the module defining what it names ", sw("call"),
-      ". Numbers count source lines. Red marks modules and edges inside a cycle ", sw("cycle"), ". ",
+      ". Numbers count source lines. Red marks modules and edges inside a cycle ", sw("cycle"), ". Hatched with an ext tag: an external crate. ",
       DATA.cycles.length ? `${DATA.cycles.length} cycle${DATA.cycles.length === 1 ? "" : "s"}, listed below the diagram.` : `No cycles among ${Object.values(NODES).filter((n) => n.kind === "Module").length} modules.`,
     ] },
   };
@@ -384,12 +315,7 @@ td.sitecell .sites { padding-left: 0; }
   // Diagrams ----------------------------------------------------------------------------------
   const panes = document.getElementById("panes");
   const tabs = document.getElementById("tabs");
-  if (DATA.tooBig) {
-    const t = DATA.tooBig;
-    panes.append(el("div", { class: "notice" }, el("h2", {}, "Too many nodes to draw"),
-      el("p", {}, `This filter matched ${t.types} types, ${t.flow} producer/consumer nodes, ${t.calls} call nodes and ${t.modules || 0} modules; the limit is ${t.maxNodes}. Narrow seed_types, seed_fns or crates, lower callers, or set modules.depth. The tables below still list every edge.`)));
-    document.querySelector(".tools").hidden = true;
-  } else if (!DATA.diagrams.length) {
+  if (!DATA.diagrams.length) {
     panes.append(el("div", { class: "notice" }, el("h2", {}, "Nothing to draw"), el("p", {}, "No edges matched this filter. Check seed_types and seed_fns with codemap find.")));
     document.querySelector(".tools").hidden = true;
   }
@@ -586,7 +512,7 @@ td.sitecell .sites { padding-left: 0; }
       return;
     }
     const typing = ev.target.closest && ev.target.closest("input, textarea, select, [contenteditable]");
-    if (ev.key.toLowerCase() === "f" && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && DATA.diagrams.length && !DATA.tooBig) {
+    if (ev.key.toLowerCase() === "f" && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && DATA.diagrams.length) {
       ev.preventDefault();
       setFull(!state.full);
     }
@@ -768,8 +694,6 @@ td.sitecell .sites { padding-left: 0; }
   }
 
   // Boot ---------------------------------------------------------------------------------------
-  const notesBody = document.getElementById("notes-body");
-  if (notesBody.textContent.trim()) document.getElementById("notes").hidden = false;
   sortable(document.getElementById("edge-table"));
   sortable(document.getElementById("type-table"));
   renderEdges();
